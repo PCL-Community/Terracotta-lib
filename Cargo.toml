@@ -1,18 +1,18 @@
 [package]
 name = "terracotta"
-version = "0.0.0-snapshot"
+version = "2.5.0-pcl.proto"
 edition = "2024"
 build = "build.rs"
 
 [package.metadata.easytier]
-version = "v2.5.0-terracotta.2"
+version = "v2.5.0-pcl.proto"
 
 [workspace]
 resolver = "3"
 members = ["timestamp"]
 
 [workspace.package]
-version = "0.0.0-snapshot"
+version = "2.5.0-pcl.proto"
 
 [dependencies]
 cfg-if = "1.0.1"
