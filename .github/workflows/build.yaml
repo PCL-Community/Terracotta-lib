@@ -54,7 +54,7 @@ jobs:
         run: |
           rustup target add --toolchain nightly "${{ matrix.target }}"
           rustup component add rust-src --toolchain "nightly-$(rustc --print host-tuple)"
-          cargo +nightly build --release --bin terracotta --target "${{ matrix.target }}" \
+          cargo +nightly build --release --bin terracotta-bin --target "${{ matrix.target }}" \
             -Z build-std=core,std,alloc,proc_macro,panic_abort \
             -Z build-std-features=default,optimize_for_size
         env:
@@ -121,7 +121,7 @@ jobs:
         run: |
           rustup target add --toolchain nightly "${{ matrix.target }}"
           rustup component add rust-src --toolchain "nightly-$(rustc --print host-tuple)"
-          cargo +nightly build --release --bin terracotta --target "${{ matrix.target }}" \
+          cargo +nightly build --release --bin terracotta-bin --target "${{ matrix.target }}" \
             -Z build-std=core,std,alloc,proc_macro,panic_abort \
             -Z build-std-features=default,optimize_for_size
         env:
@@ -130,7 +130,7 @@ jobs:
         if: ${{ contains(fromJSON('["riscv64", "loongarch64"]'), matrix.arch) && matrix.os == 'linux' }}
         run: |
           rustup target add --toolchain nightly "${{ matrix.target }}"
-          cargo +nightly zigbuild --release --bin terracotta --target "${{ matrix.target }}.${{ matrix.glibc-version }}"
+          cargo +nightly zigbuild --release --bin terracotta-bin --target "${{ matrix.target }}.${{ matrix.glibc-version }}"
       - name: Build (freebsd x86_64)
         if: ${{ contains(fromJSON('["x86_64"]'), matrix.arch) && matrix.os == 'freebsd' }}
         uses: cross-platform-actions/action@v0.30.0
@@ -146,7 +146,7 @@ jobs:
             export CXX=clang++
             . $HOME/.cargo/env
             rustup target add --toolchain nightly "${{ matrix.target }}"
-            cargo +nightly build --release --bin terracotta --target "${{ matrix.target }}"
+            cargo +nightly build --release --bin terracotta-bin --target "${{ matrix.target }}"
       - name: Build (Android)
         if: ${{ matrix.os == 'android' }}
         run: |
@@ -204,7 +204,7 @@ jobs:
         run: |
           rustup target add --toolchain nightly "${{ matrix.target }}"
           rustup component add rust-src --toolchain "nightly-$(rustc --print host-tuple)"
-          cargo +nightly build --release --bin terracotta --target "${{ matrix.target }}" \
+          cargo +nightly build --release --bin terracotta-bin --target "${{ matrix.target }}" \
             -Z build-std=core,std,alloc,proc_macro,panic_abort \
             -Z build-std-features=default,optimize_for_size
         env:
