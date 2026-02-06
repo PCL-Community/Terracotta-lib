@@ -1,10 +1,5 @@
 #![cfg_attr(all(target_os = "windows"), windows_subsystem = "windows")]
-#![cfg_attr(
-    all(target_os = "windows"),
-    feature(panic_update_hook, internal_output_capture)
-)]
-#![feature(panic_backtrace_config, const_convert, const_trait_impl)]
-#![feature(unsafe_cell_access)]
+
 
 #[cfg(not(any(
     target_os = "windows",
@@ -149,9 +144,11 @@ enum Mode {
 async fn main() {
     cfg_if::cfg_if! {
         if #[cfg(debug_assertions)] {
-            std::panic::set_backtrace_style(std::panic::BacktraceStyle::Short);
+            // 移除对 nightly feature 的依赖
+            // std::panic::set_backtrace_style(std::panic::BacktraceStyle::Short);
         } else {
-            std::panic::set_backtrace_style(std::panic::BacktraceStyle::Full);
+            // 移除对 nightly feature 的依赖
+            // std::panic::set_backtrace_style(std::panic::BacktraceStyle::Full);
         }
     }
 

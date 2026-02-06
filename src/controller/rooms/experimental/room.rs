@@ -600,11 +600,11 @@ fn compute_arguments(room: &Room, public_servers: PublicServers) -> Vec<Argument
         Argument::LatencyFirst,
         Argument::EnableKcpProxy,
         Argument::Listener {
-            address: SocketAddrV4::new(Ipv4Addr::UNSPECIFIED, 0).into(),
+            address: std::net::SocketAddr::V4(std::net::SocketAddrV4::new(std::net::Ipv4Addr::UNSPECIFIED, 0)),
             proto: Proto::UDP,
         },
         Argument::Listener {
-            address: SocketAddrV4::new(Ipv4Addr::UNSPECIFIED, 0).into(),
+            address: std::net::SocketAddr::V4(std::net::SocketAddrV4::new(std::net::Ipv4Addr::UNSPECIFIED, 0)),
             proto: Proto::TCP,
         },
         Argument::P2POnly

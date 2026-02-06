@@ -14,20 +14,21 @@ pub fn redirect(file: File) {
     }
     *lock = Some(file);
 
-    std::panic::update_hook(|prev, info| {
-        let mut lock = CELL.lock().unwrap();
-        match lock.as_mut() {
-            Some(file) => {
-                let data = Arc::new(Mutex::new(Vec::<u8>::new()));
-                std::io::set_output_capture(Some(data.clone()));
-                prev(info);
-                std::io::set_output_capture(None);
-
-                file.write_all(data.lock().unwrap().as_ref()).unwrap();
-            },
-            None => prev(info),
-        }
-    });
+    // 移除对 nightly feature 的依赖
+    // std::panic::update_hook(|prev, info| {
+    //     let mut lock = CELL.lock().unwrap();
+    //     match lock.as_mut() {
+    //         Some(file) => {
+    //             let data = Arc::new(Mutex::new(Vec::<u8>::new()));
+    //             std::io::set_output_capture(Some(data.clone()));
+    //             prev(info);
+    //             std::io::set_output_capture(None);
+    //
+    //             file.write_all(data.lock().unwrap().as_ref()).unwrap();
+    //         },
+    //         None => prev(info),
+    //     }
+    // });
 }
 
 pub fn logging(prefix: &'static str, argument: Arguments) {

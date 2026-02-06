@@ -109,7 +109,7 @@ jobs:
         if: ${{ contains(fromJSON('["x86_64", "arm64"]'), matrix.arch) && matrix.os == 'linux' }}
         run: |
           sudo apt update
-          sudo apt install --yes --no-install-recommends build-essential musl-tools musl-dev
+          sudo apt install --yes --no-install-recommends build-essential musl-tools musl-dev protobuf-compiler
       - name: Install Zig (linux riscv64 | linux loongarch64)
         if: ${{ contains(fromJSON('["riscv64", "loongarch64"]'), matrix.arch) && matrix.os == 'linux' }}
         uses: mlugg/setup-zig@v2

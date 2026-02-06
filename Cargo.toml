@@ -66,10 +66,11 @@ sevenz-rust2 = { version = "0.18.0", default-features = false, features = [
 toml = "0.9.4"
 
 [lib]
+name = "terracotta"
 crate-type = ["lib", "cdylib"]
 
 [[bin]]
-name = "terracotta"
+name = "terracotta-exe"
 path = "src/main.rs"
 
 [profile.dev]

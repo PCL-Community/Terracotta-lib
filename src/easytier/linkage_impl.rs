@@ -30,11 +30,12 @@ struct EasyTierHolder {
     runtime: Runtime,
 }
 
+
 pub fn create(args: Vec<Argument>) -> EasyTier {
     let table = UnsafeCell::new(Table::new());
     let acquire_table = || {
         unsafe {
-            table.as_mut_unchecked()
+            &mut *table.get()
         }
     };
 

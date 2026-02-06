@@ -1,12 +1,4 @@
-#![feature(
-    panic_backtrace_config,
-    const_convert,
-    const_trait_impl,
-    unsafe_cell_access,
-    panic_update_hook,
-    internal_output_capture,
-    string_from_utf8_lossy_owned
-)]
+
 
 extern crate core;
 
@@ -171,19 +163,20 @@ extern "system" fn JNI_OnLoad(vm: JavaVM, _: *mut c_void) -> jint {
 
 #[cfg(target_os = "android")]
 extern "system" fn jni_start<'l>(jenv: JNIEnv<'l>, clazz: JClass<'l>, dir: JString<'l>, logging_fd: jint) -> jint {
-    std::panic::set_backtrace_style(std::panic::BacktraceStyle::Full);
-    std::panic::update_hook(|prev, info| {
-        let data = Arc::new(Mutex::new(Vec::<u8>::new()));
-        std::io::set_output_capture(Some(data.clone()));
-        prev(info);
-        std::io::set_output_capture(None);
-
-        let data = match Arc::try_unwrap(data) {
-            Ok(data) => String::from_utf8_lossy_owned(data.into_inner().unwrap()),
-            Err(data) => String::from_utf8_lossy_owned(data.lock().unwrap().clone()) // Should NOT happen.
-        };
-        logging_android(data);
-    });
+    // 移除对 nightly feature 的依赖
+    // std::panic::set_backtrace_style(std::panic::BacktraceStyle::Full);
+    // std::panic::update_hook(|prev, info| {
+    //     let data = Arc::new(Mutex::new(Vec::<u8>::new()));
+    //     std::io::set_output_capture(Some(data.clone()));
+    //     prev(info);
+    //     std::io::set_output_capture(None);
+    //
+    //     let data = match Arc::try_unwrap(data) {
+    //         Ok(data) => String::from_utf8_lossy_owned(data.into_inner().unwrap()),
+    //         Err(data) => String::from_utf8_lossy_owned(data.lock().unwrap().clone()) // Should NOT happen.
+    //     };
+    //     logging_android(data);
+    // });
 
     let _ = LOGGING_FD.lock().unwrap().replace(unsafe { std::fs::File::from_raw_fd(logging_fd) });
 
