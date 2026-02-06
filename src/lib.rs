@@ -9,13 +9,17 @@
 )]
 
 extern crate core;
-#[cfg(not(target_os = "android"))]
-compile_error!("Terracotta Library is intended for Android platform.");
 
 #[macro_export]
 macro_rules! logging {
     ($prefix:expr, $($arg:tt)*) => {
-        crate::logging_android(std::format!("[{}]: {}", $prefix, std::format_args!($($arg)*)));
+        cfg_if::cfg_if! {
+            if #[cfg(target_os = "android")] {
+                crate::logging_android(std::format!("[{}]: {}", $prefix, std::format_args!($($arg)*)));
+            } else {
+                std::println!("[{}]: {}", $prefix, std::format_args!($($arg)*));
+            }
+        };
     };
 }
 
@@ -38,21 +42,26 @@ macro_rules! try_jvm {
 
 use crate::controller::{Room, RoomKind};
 use crate::once_cell::OnceCell;
+use cfg_if::cfg_if;
 use chrono::{FixedOffset, TimeZone, Utc};
-use jni::signature::{Primitive, ReturnType};
-use jni::sys::JNI_VERSION_1_6;
-use jni::{objects::{JClass, JString}, sys::{jboolean, jint, jlong, jshort, jsize, jvalue, JNI_FALSE, JNI_TRUE}, JNIEnv, JavaVM, NativeMethod};
 use libc::{c_char, c_int};
 use std::ffi::c_void;
 use std::fs::File;
 use std::io::Write;
-use std::os::fd::FromRawFd;
 use std::path::PathBuf;
 use std::sync::MutexGuard;
 use std::time::Duration;
 use std::{
     env, ffi::CString, net::{IpAddr, Ipv4Addr, Ipv6Addr}, sync::{Arc, Mutex}, thread,
 };
+
+// 仅在 Android 平台上使用 JNI
+#[cfg(target_os = "android")]
+use jni::signature::{Primitive, ReturnType};
+#[cfg(target_os = "android")]
+use jni::sys::JNI_VERSION_1_6;
+#[cfg(target_os = "android")]
+use jni::{objects::{JClass, JString}, sys::{jboolean, jint, jlong, jshort, jsize, jvalue, JNI_FALSE, JNI_TRUE}, JNIEnv, JavaVM, NativeMethod};
 
 pub mod controller;
 mod easytier;
@@ -101,12 +110,14 @@ static VPN_SERVICE_CFG: Mutex<Option<crate::easytier::EasyTierTunRequest>> = Mut
 
 // FIXME: Third-party crate 'jni-sys' leaves a dynamic link to JNI_GetCreatedJavaVMs which doesn't exist on Android.
 //        A dummy JNI_GetCreatedJavaVMs is declared as a workaround to prevent fatal errors while linking.
+#[cfg(target_os = "android")]
 #[unsafe(no_mangle)]
 #[allow(non_snake_case)]
 extern "system" fn JNI_GetCreatedJavaVMs(_: *mut c_void, _: jsize, _: *mut c_void) -> jint {
     unreachable!();
 }
 
+#[cfg(target_os = "android")]
 #[unsafe(no_mangle)]
 #[allow(non_snake_case)]
 extern "system" fn JNI_OnLoad(vm: JavaVM, _: *mut c_void) -> jint {
@@ -158,6 +169,7 @@ extern "system" fn JNI_OnLoad(vm: JavaVM, _: *mut c_void) -> jint {
     })
 }
 
+#[cfg(target_os = "android")]
 extern "system" fn jni_start<'l>(jenv: JNIEnv<'l>, clazz: JClass<'l>, dir: JString<'l>, logging_fd: jint) -> jint {
     std::panic::set_backtrace_style(std::panic::BacktraceStyle::Full);
     std::panic::update_hook(|prev, info| {
@@ -247,6 +259,7 @@ extern "system" fn jni_start<'l>(jenv: JNIEnv<'l>, clazz: JClass<'l>, dir: JStri
     return 0;
 }
 
+#[cfg(target_os = "android")]
 fn logging_android(line: String) {
     #[link(name = "log")]
     unsafe extern "C" {
@@ -265,18 +278,21 @@ fn logging_android(line: String) {
     }
 }
 
+#[cfg(target_os = "android")]
 extern "system" fn jni_get_state<'l>(jenv: JNIEnv<'l>, _: JClass<'l>) -> JString<'l> {
     try_jvm! { |jenv|
         jenv.new_string(serde_json::to_string(&controller::get_state()).unwrap()).unwrap()
     }
 }
 
+#[cfg(target_os = "android")]
 extern "system" fn jni_set_waiting<'l>(jenv: JNIEnv<'l>, _: JClass<'l>) {
     try_jvm! { |jenv|
         controller::set_waiting()
     }
 }
 
+#[cfg(target_os = "android")]
 extern "system" fn jni_set_scanning<'l>(jenv: JNIEnv<'l>, _: JClass<'l>, room: JString<'l>, player: JString<'l>) {
     try_jvm! { |jenv|
         let room = parse_jstring(&jenv, &room);
@@ -285,6 +301,7 @@ extern "system" fn jni_set_scanning<'l>(jenv: JNIEnv<'l>, _: JClass<'l>, room: J
     }
 }
 
+#[cfg(target_os = "android")]
 extern "system" fn jni_set_guesting<'l>(jenv: JNIEnv<'l>, _: JClass<'l>, room: JString<'l>, player: JString<'l>) -> jboolean {
     try_jvm! { |jenv|
         let room = parse_jstring(&jenv, &room).expect("'room' must not be NULL.");
@@ -298,6 +315,7 @@ extern "system" fn jni_set_guesting<'l>(jenv: JNIEnv<'l>, _: JClass<'l>, room: J
     }
 }
 
+#[cfg(target_os = "android")]
 extern "system" fn jni_verify_room_code<'l>(jenv: JNIEnv<'l>, _: JClass<'l>, room: JString<'l>) -> jint {
     try_jvm! { |jenv|
         let room = parse_jstring(&jenv, &room).expect("'room' must not be NULL.");
@@ -313,6 +331,7 @@ extern "system" fn jni_verify_room_code<'l>(jenv: JNIEnv<'l>, _: JClass<'l>, roo
     }
 }
 
+#[cfg(target_os = "android")]
 extern "system" fn jni_get_metadata<'l>(jenv: JNIEnv<'l>, _: JClass<'l>) -> JString<'l> {
     try_jvm! { |jenv|
         jenv.new_string(format!(
@@ -321,6 +340,7 @@ extern "system" fn jni_get_metadata<'l>(jenv: JNIEnv<'l>, _: JClass<'l>) -> JStr
     }
 }
 
+#[cfg(target_os = "android")]
 extern "system" fn jni_prepare_export_logs<'l>(jenv: JNIEnv<'l>, _: JClass<'l>) -> jlong {
     try_jvm! { |jenv|
         let mut logging = LOGGING_FD.lock().unwrap();
@@ -335,6 +355,7 @@ extern "system" fn jni_prepare_export_logs<'l>(jenv: JNIEnv<'l>, _: JClass<'l>) 
     }
 }
 
+#[cfg(target_os = "android")]
 extern "system" fn jni_finish_export_logs<'l>(jenv: JNIEnv<'l>, _: JClass<'l>, ptr: jlong) {
     try_jvm! { |jenv|
         unsafe {
@@ -343,17 +364,20 @@ extern "system" fn jni_finish_export_logs<'l>(jenv: JNIEnv<'l>, _: JClass<'l>, p
     }
 }
 
+#[cfg(target_os = "android")]
 extern "system" fn jni_panic<'l>(jenv: JNIEnv<'l>, _: JClass<'l>) {
     try_jvm! { |jenv|
         panic!("User triggered panic manually.");
     }
 }
 
+#[cfg(target_os = "android")]
 pub(crate) fn on_vpnservice_change(request: crate::easytier::EasyTierTunRequest) {
     let mut guard = VPN_SERVICE_CFG.lock().unwrap();
     *guard = Some(request);
 }
 
+#[cfg(target_os = "android")]
 fn parse_jstring<'l>(env: &JNIEnv<'l>, value: &JString<'l>) -> Option<String> {
     if value.is_null() {
         None
