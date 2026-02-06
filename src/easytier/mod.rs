@@ -1,25 +1,19 @@
 use crate::controller::ConnectionDifficulty;
 use crate::easytier::argument::{Argument, PortForward};
-use cfg_if::cfg_if;
 use std::cmp::PartialEq;
 use std::net::Ipv4Addr;
 
 pub mod argument;
 pub mod publics;
 
-cfg_if! {
-    if #[cfg(not(target_os = "android"))] {
-        mod executable_impl;
-        use executable_impl as inner;
+mod linkage_impl;
+use linkage_impl as inner;
 
-        pub use inner::{initialize, cleanup};
-    } else {
-        mod linkage_impl;
-        use linkage_impl as inner;
+pub use inner::EasyTierTunRequest;
 
-        pub use inner::EasyTierTunRequest;
-    }
-}
+// 提供与原来一致的接口，保持向后兼容
+pub fn initialize() {}
+pub fn cleanup() {}
 
 pub struct EasyTier(inner::EasyTier);
 

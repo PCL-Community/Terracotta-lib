@@ -40,6 +40,12 @@ timestamp = { path = "timestamp" }
 hex = "0.4.3"
 rand_chacha = "0.9.0"
 parking_lot = "0.12.4"
+easytier = { git = "https://github.com/burningtnt/EasyTier.git", branch = "main"}
+# These libraries are the necessities to interact with EasyTier. DO NOT upgrade their version.
+uuid = "1"
+toml = "0"
+tokio = "1"
+cidr = { version = "0", features = ["serde"] }
 
 [target.'cfg(target_os = "macos")'.dependencies]
 objc2 = "0.6.1"
@@ -49,13 +55,7 @@ objc2-web-kit = "0.3.1"
 native-dialog = "0.9.0"
 
 [target.'cfg(target_os = "android")'.dependencies]
-easytier = { git = "https://github.com/burningtnt/EasyTier.git", branch = "main"}
 jni = { version = "0.21.1", features = ["invocation"] }
-# These libraries are the necessities to interact with EasyTier. DO NOT upgrade their version.
-uuid = "1"
-toml = "0"
-tokio = "1"
-cidr = { version = "0", features = ["serde"] }
 
 [build-dependencies]
 winresource = "0.1"
@@ -63,10 +63,6 @@ sevenz-rust2 = { version = "0.18.0", default-features = false, features = [
     "compress",
     "util",
 ] }
-reqwest = { version = "0.12.22", default-features = false, features = [
-    "rustls-tls", "charset", "http2", "system-proxy", "blocking", "zstd"
-] }
-zip = "4.3.0"
 toml = "0.9.4"
 
 [lib]

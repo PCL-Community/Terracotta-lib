@@ -171,7 +171,7 @@ pub fn create(args: Vec<Argument>) -> EasyTier {
         }
         return EasyTier(None);
     };
-    let tun_fd = instance.launcher.as_ref().unwrap().data.tun_fd.clone();
+    let _tun_fd = instance.launcher.as_ref().unwrap().data.tun_fd.clone();
 
     runtime.spawn(async move {
         let mut p_address = None;
@@ -196,13 +196,19 @@ pub fn create(args: Vec<Argument>) -> EasyTier {
                 .flat_map(|route| route.proxy_cidrs).collect::<Vec<_>>();
 
             if p_address != address || p_proxy_cidrs != proxy_cidrs {
-                if let Some((address, network_length)) = address {
+                if let Some((_address, _network_length)) = address {
+                    #[cfg(target_os = "android")]
                     crate::on_vpnservice_change(EasyTierTunRequest {
-                        address,
-                        network_length,
+                        address: _address,
+                        network_length: _network_length,
                         cidrs: proxy_cidrs.clone(),
-                        dest: tun_fd.clone(),
+                        dest: _tun_fd.clone(),
                     });
+                    #[cfg(not(target_os = "android"))]
+                    {
+                        // 在非 Android 平台上，不需要处理 VPN 服务变更
+                        logging!("EasyTier", "VPN service change not handled on non-Android platform");
+                    }
                 }
             }
 
