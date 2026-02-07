@@ -84,7 +84,7 @@ pub fn get_state() -> Value {
 pub fn set_waiting() {
     logging!("Core", "Setting to state WAITING.");
 
-    let state = AppState::acquire();
+    let state = AppState::acquire().into_slow();
     if matches!(state.as_ref(), AppState::Waiting) {
         return;
     }
