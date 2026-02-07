@@ -418,7 +418,7 @@ async fn main_single(state: Option<Lock>, mode: Mode) {
     let future = server::server_main(port_callback);
     thread::spawn(|| {
         lazy_static::initialize(&controller::SCAFFOLDING_PORT);
-        easytier::initialize();
+        // easytier::initialize();
     });
 
     thread::spawn(move || {
@@ -441,7 +441,7 @@ async fn main_single(state: Option<Lock>, mode: Mode) {
     future.await;
     let _ = port_callback2.send(0);
 
-    easytier::cleanup();
+    // easytier::cleanup();
 }
 
 async fn main_secondary(port: u16, mode: Mode) {
@@ -470,6 +470,7 @@ async fn main_secondary(port: u16, mode: Mode) {
     }
 }
 
+#[cfg(not(target_os = "macos"))]
 async fn secondary_switch(port: u16) -> Option<Lock> {
     let client = reqwest::Client::new();
 

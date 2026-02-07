@@ -2,7 +2,7 @@ use objc2::{
     define_class, msg_send, rc::Retained, runtime::{AnyObject, ProtocolObject}, sel, ClassType, MainThreadOnly
 };
 use objc2_app_kit::{NSApplication, NSWindow, NSWindowDelegate, NSBackingStoreType, NSWindowStyleMask, NSColor, NSAutoresizingMaskOptions, NSApplicationActivationPolicy};
-use objc2_foundation::{MainThreadMarker, NSObject, NSObjectNSThreadPerformAdditions, NSObjectProtocol, NSPoint, NSRect, NSSize, NSString, NSNumber, NSURLRequest, NSURL};
+use objc2_foundation::{MainThreadMarker, NSObject, NSObjectNSThreadPerformAdditions, NSObjectProtocol, NSPoint, NSRect, NSSize, NSString, NSURLRequest, NSURL};
 #[allow(unused_imports)]
 use objc2_web_kit::{WKNavigationDelegate, WKWebView, WKWebViewConfiguration};
 
@@ -19,12 +19,10 @@ define_class!(
     impl AppDelegate {
         #[unsafe(method(windowWillClose:))]
         fn window_will_close(&self, _: *mut AnyObject) {
-            unsafe {
-                let mtm = MainThreadMarker::new().unwrap();
+            let mtm = MainThreadMarker::new().unwrap();
 
-                let app = NSApplication::sharedApplication(mtm);
-                app.terminate(None);
-            }
+            let app = NSApplication::sharedApplication(mtm);
+            app.terminate(None);
         }
     }
 );

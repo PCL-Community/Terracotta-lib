@@ -36,7 +36,7 @@ fn main() {
 
     let desc = get_var("TARGET").unwrap().replace('-', "_").to_uppercase();
 
-    let version = get_var("TERRACOTTA_VERSION").unwrap_or_else(|_| "snapshot".to_string());
+    let version = get_var("TERRACOTTA_VERSION").unwrap_or_else(|_| "ver. PCL.Proto 0.7.0".to_string());
     println!("cargo::rustc-env=TERRACOTTA_VERSION={}", version);
 
     let target_family = get_var("CARGO_CFG_TARGET_FAMILY").unwrap().to_string();

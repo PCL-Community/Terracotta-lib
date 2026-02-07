@@ -1,5 +1,3 @@
-
-
 extern crate core;
 
 #[macro_export]
@@ -15,6 +13,7 @@ macro_rules! logging {
     };
 }
 
+#[cfg(target_os = "android")]
 macro_rules! try_jvm {
     (|$jenv:ident| $($tokens:tt)*) => {{
         let mut $jenv = $jenv;
@@ -32,19 +31,10 @@ macro_rules! try_jvm {
     }};
 }
 
-use crate::controller::{Room, RoomKind};
 use crate::once_cell::OnceCell;
-use cfg_if::cfg_if;
-use chrono::{FixedOffset, TimeZone, Utc};
-use libc::{c_char, c_int};
-use std::ffi::c_void;
-use std::fs::File;
-use std::io::Write;
 use std::path::PathBuf;
-use std::sync::MutexGuard;
-use std::time::Duration;
 use std::{
-    env, ffi::CString, net::{IpAddr, Ipv4Addr, Ipv6Addr}, sync::{Arc, Mutex}, thread,
+    net::{IpAddr, Ipv4Addr, Ipv6Addr},
 };
 
 // 仅在 Android 平台上使用 JNI
@@ -53,7 +43,28 @@ use jni::signature::{Primitive, ReturnType};
 #[cfg(target_os = "android")]
 use jni::sys::JNI_VERSION_1_6;
 #[cfg(target_os = "android")]
-use jni::{objects::{JClass, JString}, sys::{jboolean, jint, jlong, jshort, jsize, jvalue, JNI_FALSE, JNI_TRUE}, JNIEnv, JavaVM, NativeMethod};
+use jni::{
+    JNIEnv, JavaVM, NativeMethod,
+    objects::{JClass, JString},
+    sys::{JNI_FALSE, JNI_TRUE, jboolean, jint, jlong, jshort, jsize, jvalue},
+};
+
+#[cfg(target_os = "android")]
+use {
+    crate::controller::{Room, RoomKind},
+    cfg_if::cfg_if,
+    chrono::{FixedOffset, TimeZone, Utc},
+    libc::{c_char, c_int},
+    std::{
+        env,
+        ffi::{c_void, CString},
+        fs::File,
+        io::Write,
+        sync::{Arc, Mutex, MutexGuard},
+        thread,
+        time::Duration,
+    },
+};
 
 pub mod controller;
 mod easytier;
@@ -61,8 +72,8 @@ mod scaffolding;
 pub const MOTD: &'static str = "§6§l双击进入陶瓦联机大厅（请保持陶瓦运行）";
 
 mod mc;
-mod ports;
 mod once_cell;
+mod ports;
 
 lazy_static::lazy_static! {
     static ref ADDRESSES: Vec<IpAddr> = {
@@ -97,8 +108,15 @@ lazy_static::lazy_static! {
 }
 
 static MACHINE_ID_FILE: OnceCell<std::path::PathBuf> = OnceCell::new();
+#[cfg(target_os = "android")]
 static LOGGING_FD: Mutex<Option<std::fs::File>> = Mutex::new(None);
+#[cfg(target_os = "android")]
 static VPN_SERVICE_CFG: Mutex<Option<crate::easytier::EasyTierTunRequest>> = Mutex::new(None);
+
+pub fn init_lib(machine_id: PathBuf) {
+    ::easytier::tunnel::insecure_tls::init_crypto_provider();
+    MACHINE_ID_FILE.set(machine_id);
+}
 
 // FIXME: Third-party crate 'jni-sys' leaves a dynamic link to JNI_GetCreatedJavaVMs which doesn't exist on Android.
 //        A dummy JNI_GetCreatedJavaVMs is declared as a workaround to prevent fatal errors while linking.
@@ -118,17 +136,26 @@ extern "system" fn JNI_OnLoad(vm: JavaVM, _: *mut c_void) -> jint {
 
         let target_class = {
             let clazz = jenv.find_class("java/lang/System")?;
-            let method = jenv.get_static_method_id(&clazz, "getProperty", "(Ljava/lang/String;)Ljava/lang/String;")?;
+            let method = jenv.get_static_method_id(
+                &clazz,
+                "getProperty",
+                "(Ljava/lang/String;)Ljava/lang/String;",
+            )?;
 
             let key = jenv.new_string("net.burningtnt.terracotta.native_location")?;
             let location = unsafe {
                 jenv.call_static_method_unchecked(
-                    clazz, method, ReturnType::Object, &[ jvalue { l: key.as_raw() }],
-                )?.l()?
+                    clazz,
+                    method,
+                    ReturnType::Object,
+                    &[jvalue { l: key.as_raw() }],
+                )?
+                .l()?
             };
 
             jenv.find_class(
-                parse_jstring(&jenv, &JString::from(location)).unwrap_or("net/burningtnt/terracotta/TerracottaAndroidAPI".into())
+                parse_jstring(&jenv, &JString::from(location))
+                    .unwrap_or("net/burningtnt/terracotta/TerracottaAndroidAPI".into()),
             )?
         };
 
@@ -138,18 +165,33 @@ extern "system" fn JNI_OnLoad(vm: JavaVM, _: *mut c_void) -> jint {
             };
         }
 
-        jenv.register_native_methods(target_class, &[
-            of!["start0", "(Ljava/lang/String;I)I", jni_start],
-            of!["getState0", "()Ljava/lang/String;", jni_get_state],
-            of!["setWaiting0", "()V", jni_set_waiting],
-            of!["setScanning0", "(Ljava/lang/String;Ljava/lang/String;)V", jni_set_scanning],
-            of!["setGuesting0", "(Ljava/lang/String;Ljava/lang/String;)Z", jni_set_guesting],
-            of!["verifyRoomCode0", "(Ljava/lang/String;)I", jni_verify_room_code],
-            of!["getMetadata0", "()Ljava/lang/String;", jni_get_metadata],
-            of!["prepareExportLogs0", "()J", jni_prepare_export_logs],
-            of!["finishExportLogs0", "(J)V", jni_finish_export_logs],
-            of!["panic0", "()V", jni_panic],
-        ])?;
+        jenv.register_native_methods(
+            target_class,
+            &[
+                of!["start0", "(Ljava/lang/String;I)I", jni_start],
+                of!["getState0", "()Ljava/lang/String;", jni_get_state],
+                of!["setWaiting0", "()V", jni_set_waiting],
+                of![
+                    "setScanning0",
+                    "(Ljava/lang/String;Ljava/lang/String;)V",
+                    jni_set_scanning
+                ],
+                of![
+                    "setGuesting0",
+                    "(Ljava/lang/String;Ljava/lang/String;)Z",
+                    jni_set_guesting
+                ],
+                of![
+                    "verifyRoomCode0",
+                    "(Ljava/lang/String;)I",
+                    jni_verify_room_code
+                ],
+                of!["getMetadata0", "()Ljava/lang/String;", jni_get_metadata],
+                of!["prepareExportLogs0", "()J", jni_prepare_export_logs],
+                of!["finishExportLogs0", "(J)V", jni_finish_export_logs],
+                of!["panic0", "()V", jni_panic],
+            ],
+        )?;
 
         Ok(JNI_VERSION_1_6)
     };
@@ -162,7 +204,12 @@ extern "system" fn JNI_OnLoad(vm: JavaVM, _: *mut c_void) -> jint {
 }
 
 #[cfg(target_os = "android")]
-extern "system" fn jni_start<'l>(jenv: JNIEnv<'l>, clazz: JClass<'l>, dir: JString<'l>, logging_fd: jint) -> jint {
+extern "system" fn jni_start<'l>(
+    jenv: JNIEnv<'l>,
+    clazz: JClass<'l>,
+    dir: JString<'l>,
+    logging_fd: jint,
+) -> jint {
     // 移除对 nightly feature 的依赖
     // std::panic::set_backtrace_style(std::panic::BacktraceStyle::Full);
     // std::panic::update_hook(|prev, info| {
@@ -178,7 +225,10 @@ extern "system" fn jni_start<'l>(jenv: JNIEnv<'l>, clazz: JClass<'l>, dir: JStri
     //     logging_android(data);
     // });
 
-    let _ = LOGGING_FD.lock().unwrap().replace(unsafe { std::fs::File::from_raw_fd(logging_fd) });
+    let _ = LOGGING_FD
+        .lock()
+        .unwrap()
+        .replace(unsafe { std::fs::File::from_raw_fd(logging_fd) });
 
     logging!(
         "UI",
@@ -204,31 +254,50 @@ extern "system" fn jni_start<'l>(jenv: JNIEnv<'l>, clazz: JClass<'l>, dir: JStri
     thread::spawn(move || {
         let mut jenv = jvm.attach_current_thread_as_daemon().unwrap();
 
-        let on_vpn_service_sc = jenv.get_static_method_id(
-            &clazz, "onVpnServiceStateChanged", "(BBBBSLjava/lang/String;)I",
-        ).unwrap();
+        let on_vpn_service_sc = jenv
+            .get_static_method_id(
+                &clazz,
+                "onVpnServiceStateChanged",
+                "(BBBBSLjava/lang/String;)I",
+            )
+            .unwrap();
 
         loop {
             thread::sleep(Duration::from_millis(1000));
 
-            let Some(cfg) = ({
-                VPN_SERVICE_CFG.lock().unwrap().take()
-            }) else {
+            let Some(cfg) = ({ VPN_SERVICE_CFG.lock().unwrap().take() }) else {
                 continue;
             };
 
-            logging!("Android", "Requesting VpnService: ip={}, cidrs: {:?}", cfg.address, cfg.cidrs);
+            logging!(
+                "Android",
+                "Requesting VpnService: ip={}, cidrs: {:?}",
+                cfg.address,
+                cfg.cidrs
+            );
             let [ip1, ip2, ip3, ip4] = cfg.address.octets().map(|i| i as i8);
             let cidrs = cfg.cidrs.join("\0");
             let cidrs2 = jenv.new_string(cidrs).unwrap();
 
             let tun_fd = unsafe {
                 let arguments = [
-                    jvalue { b: ip1 }, jvalue { b: ip2 }, jvalue { b: ip3 }, jvalue { b: ip4 },
-                    jvalue { s: cfg.network_length as jshort },
-                    jvalue { l: cidrs2.into_raw() }
+                    jvalue { b: ip1 },
+                    jvalue { b: ip2 },
+                    jvalue { b: ip3 },
+                    jvalue { b: ip4 },
+                    jvalue {
+                        s: cfg.network_length as jshort,
+                    },
+                    jvalue {
+                        l: cidrs2.into_raw(),
+                    },
                 ];
-                jenv.call_static_method_unchecked(&clazz, on_vpn_service_sc, ReturnType::Primitive(Primitive::Int), &arguments)
+                jenv.call_static_method_unchecked(
+                    &clazz,
+                    on_vpn_service_sc,
+                    ReturnType::Primitive(Primitive::Int),
+                    &arguments,
+                )
             };
 
             match tun_fd {
@@ -238,7 +307,10 @@ extern "system" fn jni_start<'l>(jenv: JNIEnv<'l>, clazz: JClass<'l>, dir: JStri
                     cfg.dest.write().unwrap().replace(tun_fd);
                 }
                 Err(jni::errors::Error::JavaException) => {
-                    logging!("Android", "Cannot request VpnService: An JavaException is thrown on Java Level.");
+                    logging!(
+                        "Android",
+                        "Cannot request VpnService: An JavaException is thrown on Java Level."
+                    );
                 }
                 Err(e) => Err(e).unwrap(),
             }
@@ -259,7 +331,9 @@ fn logging_android(line: String) {
         fn __android_log_write(prio: c_int, tag: *const c_char, text: *const c_char) -> c_int;
     }
 
-    if let Ok(mut fd) = LOGGING_FD.lock() && let Some(fd) = fd.as_mut() {
+    if let Ok(mut fd) = LOGGING_FD.lock()
+        && let Some(fd) = fd.as_mut()
+    {
         let _ = fd.write_all(line.as_bytes());
         let _ = fd.write_all(b"\n");
     }
@@ -286,7 +360,12 @@ extern "system" fn jni_set_waiting<'l>(jenv: JNIEnv<'l>, _: JClass<'l>) {
 }
 
 #[cfg(target_os = "android")]
-extern "system" fn jni_set_scanning<'l>(jenv: JNIEnv<'l>, _: JClass<'l>, room: JString<'l>, player: JString<'l>) {
+extern "system" fn jni_set_scanning<'l>(
+    jenv: JNIEnv<'l>,
+    _: JClass<'l>,
+    room: JString<'l>,
+    player: JString<'l>,
+) {
     try_jvm! { |jenv|
         let room = parse_jstring(&jenv, &room);
         let player = parse_jstring(&jenv, &player);
@@ -295,7 +374,12 @@ extern "system" fn jni_set_scanning<'l>(jenv: JNIEnv<'l>, _: JClass<'l>, room: J
 }
 
 #[cfg(target_os = "android")]
-extern "system" fn jni_set_guesting<'l>(jenv: JNIEnv<'l>, _: JClass<'l>, room: JString<'l>, player: JString<'l>) -> jboolean {
+extern "system" fn jni_set_guesting<'l>(
+    jenv: JNIEnv<'l>,
+    _: JClass<'l>,
+    room: JString<'l>,
+    player: JString<'l>,
+) -> jboolean {
     try_jvm! { |jenv|
         let room = parse_jstring(&jenv, &room).expect("'room' must not be NULL.");
         let player = parse_jstring(&jenv, &player);
@@ -309,7 +393,11 @@ extern "system" fn jni_set_guesting<'l>(jenv: JNIEnv<'l>, _: JClass<'l>, room: J
 }
 
 #[cfg(target_os = "android")]
-extern "system" fn jni_verify_room_code<'l>(jenv: JNIEnv<'l>, _: JClass<'l>, room: JString<'l>) -> jint {
+extern "system" fn jni_verify_room_code<'l>(
+    jenv: JNIEnv<'l>,
+    _: JClass<'l>,
+    room: JString<'l>,
+) -> jint {
     try_jvm! { |jenv|
         let room = parse_jstring(&jenv, &room).expect("'room' must not be NULL.");
 

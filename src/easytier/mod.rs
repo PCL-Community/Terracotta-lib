@@ -9,11 +9,11 @@ pub mod publics;
 mod linkage_impl;
 use linkage_impl as inner;
 
+#[cfg(target_os = "android")]
 pub use inner::EasyTierTunRequest;
 
-// 提供与原来一致的接口，保持向后兼容
-pub fn initialize() {}
-pub fn cleanup() {}
+// pub fn initialize() {}
+// pub fn cleanup() {}
 
 pub struct EasyTier(inner::EasyTier);
 

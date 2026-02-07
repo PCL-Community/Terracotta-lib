@@ -10,12 +10,14 @@ use std::cell::UnsafeCell;
 use std::iter::once;
 use std::net::Ipv4Addr;
 use std::str::FromStr;
+#[cfg(target_os = "android")]
 use std::sync::{Arc, RwLock};
 use std::thread;
 use std::time::Duration;
 use tokio::runtime::Runtime;
 use toml::{Table, Value};
 
+#[cfg(target_os = "android")]
 pub struct EasyTierTunRequest {
     pub address: Ipv4Addr,
     pub network_length: u8,
