@@ -142,16 +142,6 @@ enum Mode {
 
 #[rocket::main]
 async fn main() {
-    cfg_if::cfg_if! {
-        if #[cfg(debug_assertions)] {
-            // 移除对 nightly feature 的依赖
-            // std::panic::set_backtrace_style(std::panic::BacktraceStyle::Short);
-        } else {
-            // 移除对 nightly feature 的依赖
-            // std::panic::set_backtrace_style(std::panic::BacktraceStyle::Full);
-        }
-    }
-
     #[cfg(target_family = "windows")]
     {
         if unsafe { winapi::um::wincon::AttachConsole(u32::MAX) } != 0 {

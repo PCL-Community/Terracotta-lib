@@ -7,13 +7,6 @@ build = "build.rs"
 [package.metadata.easytier]
 version = "v2.5.0-terracotta.2"
 
-[workspace]
-resolver = "3"
-members = ["timestamp"]
-
-[workspace.package]
-version = "2.5.0-pcl.proto"
-
 [dependencies]
 cfg-if = "1.0.1"
 chrono = { version = "0.4.41", default-features = false, features = [
@@ -72,40 +65,3 @@ crate-type = ["lib", "cdylib"]
 [[bin]]
 name = "terracotta-exe"
 path = "src/main.rs"
-
-[profile.dev]
-panic = "abort"
-
-[profile.dev-fast]
-inherits = "dev"
-debug = false
-strip = "debuginfo"
-
-[profile.release]
-opt-level = "z"
-strip = true
-lto = true
-codegen-units = 1
-panic = "abort"
-debug = false
-debug-assertions = false
-overflow-checks = false
-incremental = false
-rpath = false
-
-[profile.release.package."*"]
-opt-level = "z"
-strip = true
-codegen-units = 1
-debug = false
-debug-assertions = false
-overflow-checks = false
-incremental = false
-
-[profile.release-fast]
-inherits = "release"
-codegen-units = 64
-
-[profile.release-fast.package."*"]
-inherits = "release"
-codegen-units = 64
