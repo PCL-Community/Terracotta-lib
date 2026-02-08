@@ -43,6 +43,7 @@ pub mod controller;
 pub mod easytier;
 pub mod server;
 pub mod scaffolding;
+pub mod rooms;
 
 #[cfg(target_family = "windows")]
 pub mod logging_windows;

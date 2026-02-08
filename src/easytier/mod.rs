@@ -1,4 +1,3 @@
-use crate::controller::ConnectionDifficulty;
 use std::cmp::PartialEq;
 use std::net::{Ipv4Addr, SocketAddr};
 
@@ -13,6 +12,15 @@ use linkage_impl as inner;
 #[cfg(target_os = "android")]
 pub use inner::EasyTierTunRequest;
 use tokio::runtime::Runtime;
+
+#[derive(Debug)]
+pub enum ConnectionDifficulty {
+    Unknown,
+    Easiest,
+    Simple,
+    Medium,
+    Tough,
+}
 
 struct EasyTierHolder {
     instance: NetworkInstance,

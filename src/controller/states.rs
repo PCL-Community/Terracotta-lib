@@ -1,12 +1,12 @@
 use std::fmt::{Debug, Formatter};
-use crate::easytier::EasyTier;
+use crate::easytier::{ConnectionDifficulty, EasyTier};
 use crate::mc::fakeserver::FakeServer;
 use crate::mc::scanning::MinecraftScanner;
 use std::mem;
 use std::panic::Location;
 use std::time::{Duration, SystemTime};
 use parking_lot::{Mutex, MutexGuard};
-use crate::controller::{ConnectionDifficulty, Room};
+use crate::rooms::Room;
 use crate::scaffolding::profile::Profile;
 
 pub enum AppState {

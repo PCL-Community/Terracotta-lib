@@ -1,7 +1,8 @@
 use std::sync::mpsc;
-use crate::controller::states::AppState;
-use crate::controller::{scaffolding, ConnectionDifficulty, ExceptionType, Room};
+use crate::controller::states::{AppState, ExceptionType};
+use crate::easytier::ConnectionDifficulty;
 use crate::easytier::publics::PUBLIC_NODES;
+use crate::rooms::Room;
 use crate::scaffolding::profile::Profile;
 use crate::mc::scanning::MinecraftScanner;
 use crate::MOTD;
@@ -130,7 +131,7 @@ pub fn set_scanning(room: Option<String>, player: Option<String>) {
             }
         };
 
-        scaffolding::start_host(room, port, player, capture, receiver.recv().unwrap())
+        room.start_host(port, player, capture, receiver.recv().unwrap())
     });
 }
 
@@ -143,7 +144,7 @@ pub fn set_guesting(room: Room, player: Option<String>) -> bool {
         state.set(AppState::GuestConnecting { room: room.clone() })
     };
     logging!("Core", "Connecting to room, code={}", room.code);
-    thread::spawn(move || room.start_guest(capture, player, PUBLIC_NODES));
+    thread::spawn(move || room.start_guest(player, capture, PUBLIC_NODES));
 
     true
 }

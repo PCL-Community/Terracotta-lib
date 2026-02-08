@@ -74,6 +74,7 @@ pub const MOTD: &'static str = "§6§l双击进入陶瓦联机大厅（请保持
 mod mc;
 mod once_cell;
 mod ports;
+pub mod rooms;
 
 lazy_static::lazy_static! {
     static ref ADDRESSES: Vec<IpAddr> = {

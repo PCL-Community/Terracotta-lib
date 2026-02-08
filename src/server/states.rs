@@ -3,7 +3,7 @@ use rocket::serde::json::Json;
 use serde_json::Value;
 
 use crate::controller;
-use crate::controller::Room;
+use crate::rooms::Room;
 
 #[get("/")]
 fn get_state() -> Json<Value> {
