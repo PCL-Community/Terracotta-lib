@@ -74,6 +74,7 @@ pub fn calc_conn_difficulty(left: &NatType, right: &NatType) -> ConnectionDiffic
     }
 }
 
+#[inline]
 pub fn create_with_config(config: TomlConfigLoader) -> EasyTier {
     inner::create_with_config(config)
 }

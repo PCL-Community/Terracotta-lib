@@ -33,7 +33,7 @@ timestamp = { path = "timestamp" }
 hex = "0.4.3"
 rand_chacha = "0.9.0"
 parking_lot = "0.12.4"
-easytier = { git = "https://github.com/burningtnt/EasyTier.git", branch = "main"}
+easytier = { git = "https://github.com/EasyTier/EasyTier.git", branch = "main"}
 # These libraries are the necessities to interact with EasyTier. DO NOT upgrade their version.
 uuid = "1"
 toml = "0"

@@ -1,15 +1,32 @@
 pub mod protocols;
 mod tools;
-use easytier::{common::config::{ConfigLoader, TomlConfigLoader}, proto::common::SocketType};
+use easytier::{
+    common::config::{ConfigLoader, TomlConfigLoader},
+    proto::common::SocketType,
+};
 use rand_core::{OsRng, TryRngCore};
 use serde_json::json;
-use std::{mem::{MaybeUninit, transmute}, net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddrV4, SocketAddrV6}, thread, time::{Duration, SystemTime}};
+use std::{
+    mem::{MaybeUninit, transmute},
+    net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddrV4, SocketAddrV6},
+    thread,
+    time::{Duration, SystemTime},
+};
 
 use crate::{
     controller::{
         SCAFFOLDING_PORT,
         states::{AppState, AppStateCapture, ExceptionType},
-    }, easytier::{ConnectionDifficulty, EasyTierMember, PortForward}, mc::fakeserver::FakeServer, ports::PortRequest, rooms::tools::check_mc_conn, scaffolding::{PacketResponse, client::ClientSession, profile::{MACHINE_ID, Profile, ProfileKind, ProfileSnapshot, VENDOR}}
+    },
+    easytier::{ConnectionDifficulty, EasyTierMember, PortForward},
+    mc::fakeserver::FakeServer,
+    ports::PortRequest,
+    rooms::tools::check_mc_conn,
+    scaffolding::{
+        PacketResponse,
+        client::ClientSession,
+        profile::{MACHINE_ID, Profile, ProfileKind, ProfileSnapshot, VENDOR},
+    },
 };
 
 #[derive(Debug, Clone)]
@@ -180,7 +197,10 @@ impl Room {
             public_servers
                 .iter()
                 .filter_map(|server| server.parse().ok())
-                .map(|uri| PeerConfig { uri })
+                .map(|uri| PeerConfig {
+                    uri,
+                    peer_public_key: None,
+                })
                 .collect(),
         );
         config.set_port_forwards(Vec::new());
@@ -786,16 +806,11 @@ impl Room {
     }
 }
 
-
 #[cfg(test)]
 mod tests {
-    use easytier::common::config::ConfigLoader;
-    use ::easytier::{
-        common::config::ConfigFileControl, launcher::NetworkInstance,
-        proto::common::CompressionAlgoPb,
-    };
-
     use crate::{easytier::publics::PUBLIC_NODES, rooms::Room};
+    use ::easytier::proto::common::CompressionAlgoPb;
+    use easytier::common::config::ConfigLoader;
 
     #[test]
     fn test_gen_config() {
@@ -805,11 +820,8 @@ mod tests {
             config1.get_flags().data_compress_algo,
             CompressionAlgoPb::Zstd as i32
         );
-        let mut instance = NetworkInstance::new(config1, ConfigFileControl::STATIC_CONFIG);
-        instance.start().unwrap();
         assert!(
-            instance
-                .config
+            config1
                 .get_network_identity()
                 .network_secret_digest
                 .is_some()

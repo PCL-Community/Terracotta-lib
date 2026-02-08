@@ -59,8 +59,7 @@ pub fn create_with_config(config: TomlConfigLoader) -> EasyTier {
         }
         return EasyTier(None);
     };
-    let _tun_fd = instance.launcher.as_ref().unwrap().data.tun_fd.clone();
-
+    
     runtime.spawn(async move {
         let mut p_address = None;
         let mut p_proxy_cidrs = vec![];
