@@ -1,7 +1,7 @@
 mod api;
 pub mod states;
 
-pub use api::{get_state, set_waiting, set_scanning, set_guesting};
+pub use api::{get_state, set_waiting, set_scanning, set_guesting, set_scanning_only, set_host_starting};
 
 use crate::{rooms::protocols::HANDLERS, scaffolding::server::start};
 

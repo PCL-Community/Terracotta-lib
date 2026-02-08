@@ -1,15 +1,15 @@
-use std::sync::mpsc;
+use crate::MOTD;
 use crate::controller::states::{AppState, ExceptionType};
 use crate::easytier::ConnectionDifficulty;
 use crate::easytier::publics::PUBLIC_NODES;
+use crate::mc::scanning::MinecraftScanner;
 use crate::rooms::Room;
 use crate::scaffolding::profile::Profile;
-use crate::mc::scanning::MinecraftScanner;
-use crate::MOTD;
 use rocket::serde::Serialize;
-use serde::ser::SerializeSeq;
 use serde::Serializer;
-use serde_json::{json, Value};
+use serde::ser::SerializeSeq;
+use serde_json::{Value, json};
+use std::sync::mpsc;
 use std::thread;
 use std::time::{Duration, SystemTime};
 
@@ -22,8 +22,8 @@ pub fn get_state() -> Value {
             json!({"state": "waiting", "index": index})
         }
 
-        AppState::HostScanning { .. } => {
-            json!({"state": "host-scanning", "index": index})
+        AppState::HostScanning { scanner, .. } => {
+            json!({"state": "host-scanning", "index": index, "avaliable_mc_ports": scanner.get_ports()})
         }
         AppState::HostStarting { room, .. } => {
             json!({"state": "host-starting", "index": index, "room": room.code})
@@ -49,7 +49,9 @@ pub fn get_state() -> Value {
         AppState::GuestConnecting { room, .. } => {
             json!({"state": "guest-connecting", "index": index, "room": room.code})
         }
-        AppState::GuestStarting { room, difficulty, .. } => {
+        AppState::GuestStarting {
+            room, difficulty, ..
+        } => {
             json!({"state": "guest-starting", "index": index, "room": room.code, "difficulty": match difficulty {
                 ConnectionDifficulty::Unknown => "UNKNOWN",
                 ConnectionDifficulty::Easiest => "EASIEST",
@@ -58,7 +60,9 @@ pub fn get_state() -> Value {
                 ConnectionDifficulty::Tough => "TOUGH",
             }})
         }
-        AppState::GuestOk { server, profiles, .. } => {
+        AppState::GuestOk {
+            server, profiles, ..
+        } => {
             let url = if server.port == 25565 {
                 "127.0.0.1".into()
             } else {
@@ -127,12 +131,44 @@ pub fn set_scanning(room: Option<String>, player: Option<String>) {
             };
 
             if let Some(port) = scanner.get_ports().first() {
-                break (room.clone(), *port, state.set(AppState::HostStarting { room, port: *port }));
+                break (
+                    room.clone(),
+                    *port,
+                    state.set(AppState::HostStarting { room, port: *port }),
+                );
             }
         };
 
         room.start_host(port, player, capture, receiver.recv().unwrap())
     });
+}
+
+pub fn set_scanning_only() {
+    let state = AppState::acquire();
+    if !matches!(state.as_ref(), AppState::Waiting) {
+        return;
+    }
+    state.set(AppState::HostScanning {
+        scanner: MinecraftScanner::create(|m| m != MOTD),
+    });
+    logging!("Core", "Setting to state SCANNING.");
+}
+
+pub fn set_host_starting(mc_port: u16, player: Option<String>) -> Option<String> {
+    let state = AppState::acquire();
+    if !matches!(state.as_ref(), AppState::HostScanning { .. }) {
+        return None;
+    }
+    let room = Room::create();
+    let room_code = room.code.clone();
+    logging!("Core", "Created room, code={}", &room_code);
+    let capture = state.set(AppState::HostStarting {
+        room: room.clone(),
+        port: mc_port,
+    });
+    logging!("Core", "Setting to state HOST_STARTING.");
+    thread::spawn(move || room.start_host(mc_port, player, capture, PUBLIC_NODES));
+    Some(room_code)
 }
 
 pub fn set_guesting(room: Room, player: Option<String>) -> bool {
@@ -145,6 +181,5 @@ pub fn set_guesting(room: Room, player: Option<String>) -> bool {
     };
     logging!("Core", "Connecting to room, code={}", room.code);
     thread::spawn(move || room.start_guest(player, capture, PUBLIC_NODES));
-
     true
 }

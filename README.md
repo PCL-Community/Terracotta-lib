@@ -49,8 +49,8 @@ pub fn set_terracotta_waiting() {
 }
 
 #[tauri::command]
-pub fn set_terracotta_host_scanning(player: String) {
-    controller::set_scanning(None, Some(player));
+pub fn set_terracotta_host_scanning() {
+    controller::set_scanning_only();
 }
 
 #[tauri::command]
