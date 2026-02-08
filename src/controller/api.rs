@@ -1,6 +1,7 @@
 use std::sync::mpsc;
 use crate::controller::states::AppState;
 use crate::controller::{scaffolding, ConnectionDifficulty, ExceptionType, Room};
+use crate::easytier::publics::PUBLIC_NODES;
 use crate::scaffolding::profile::Profile;
 use crate::mc::scanning::MinecraftScanner;
 use crate::MOTD;
@@ -10,7 +11,6 @@ use serde::Serializer;
 use serde_json::{json, Value};
 use std::thread;
 use std::time::{Duration, SystemTime};
-use crate::easytier::publics::fetch_public_nodes;
 
 pub fn get_state() -> Value {
     let state = AppState::acquire();
@@ -110,10 +110,9 @@ pub fn set_scanning(room: Option<String>, player: Option<String>) {
             .unwrap_or_else(Room::create);
 
         let (sender, receiver) = mpsc::channel();
-        let room2 = room.clone();
         thread::spawn(move || {
             // EasyTier Uptime is undergoing DDOS attack, so it's crucial to perform a prefetch logic.
-            let _ = sender.send(fetch_public_nodes(&room2));
+            let _ = sender.send(PUBLIC_NODES);
         });
 
         let (room, port, capture) = loop {
@@ -144,7 +143,7 @@ pub fn set_guesting(room: Room, player: Option<String>) -> bool {
         state.set(AppState::GuestConnecting { room: room.clone() })
     };
     logging!("Core", "Connecting to room, code={}", room.code);
-    thread::spawn(move || room.start_guest(capture, player));
+    thread::spawn(move || room.start_guest(capture, player, PUBLIC_NODES));
 
     true
 }

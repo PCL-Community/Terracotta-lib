@@ -31,7 +31,7 @@ impl Room {
         scaffolding::parse(code)
     }
 
-    pub fn start_guest(self, capture: AppStateCapture, player: Option<String>) {
-        scaffolding::start_guest(self, player, capture)
+    pub fn start_guest(self, capture: AppStateCapture, player: Option<String>, public_servers: &[&str]) {
+        scaffolding::start_guest(self, player, capture, public_servers)
     }
 }

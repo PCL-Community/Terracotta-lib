@@ -1,24 +1,23 @@
 use crate::controller::scaffolding::{MACHINE_ID, VENDOR};
 use crate::controller::states::{AppState, AppStateCapture};
 use crate::controller::{ConnectionDifficulty, ExceptionType, Room, RoomKind, SCAFFOLDING_PORT};
-use crate::easytier;
-use crate::easytier::argument::{Argument, PortForward, Proto};
-use crate::easytier::publics::{fetch_public_nodes, PublicServers};
+use crate::easytier::{self, PortForward};
+use crate::easytier::EasyTierMember;
 use crate::mc::fakeserver::FakeServer;
 use crate::ports::PortRequest;
+use crate::scaffolding::PacketResponse;
 use crate::scaffolding::client::ClientSession;
 use crate::scaffolding::profile::{Profile, ProfileKind, ProfileSnapshot};
-use crate::scaffolding::PacketResponse;
+use ::easytier::common::config::{ConfigLoader, TomlConfigLoader};
+use ::easytier::proto::common::SocketType;
 use rand_core::{OsRng, TryRngCore};
-use serde_json::{json, Value};
-use std::borrow::Cow;
-use std::mem::{transmute, MaybeUninit};
+use serde_json::{Value, json};
+use socket2::{Domain, SockAddr, Socket, Type};
+use std::mem::{MaybeUninit, transmute};
 use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddrV4, SocketAddrV6};
 use std::str::FromStr;
-use std::time::{Duration, SystemTime};
 use std::thread;
-use socket2::{Domain, SockAddr, Socket, Type};
-use crate::easytier::EasyTierMember;
+use std::time::{Duration, SystemTime};
 
 static CHARS: &[u8] = "0123456789ABCDEFGHJKLMNPQRSTUVWXYZ".as_bytes();
 
@@ -137,17 +136,17 @@ fn from_value(value: u128) -> (String, String, String) {
     (code, network_name, network_secret)
 }
 
-pub fn start_host(room: Room, port: u16, player: Option<String>, capture: AppStateCapture, public_servers: PublicServers) {
-    let scaffolding = *SCAFFOLDING_PORT;
+pub fn start_host(
+    room: Room,
+    port: u16,
+    player: Option<String>,
+    capture: AppStateCapture,
+    public_servers: &[&str],
+) {
+    let scaffolding_port = *SCAFFOLDING_PORT;
+    let config = compute_arguments_host(&room, port, public_servers, scaffolding_port);
 
-    let mut args = compute_arguments(&room, public_servers);
-    args.push(Argument::HostName(Cow::Owned(format!("scaffolding-mc-server-{}", scaffolding))));
-    args.push(Argument::IPv4(Ipv4Addr::new(10, 144, 144, 1)));
-    args.push(Argument::TcpWhitelist(scaffolding));
-    args.push(Argument::TcpWhitelist(port));
-    args.push(Argument::UdpWhitelist(port));
-
-    let easytier = easytier::create(args);
+    let easytier = easytier::create_with_config(config);
     let capture = {
         let Some(state) = capture.try_capture() else {
             return;
@@ -162,8 +161,9 @@ pub fn start_host(room: Room, port: u16, player: Option<String>, capture: AppSta
                     machine_id: MACHINE_ID.to_string(),
                     name: player.unwrap_or("Terracotta Anonymous Host".to_string()),
                     vendor: VENDOR.to_string(),
-                    kind: ProfileKind::HOST
-                }.into_profile()
+                    kind: ProfileKind::HOST,
+                }
+                .into_profile(),
             )],
         })
     };
@@ -181,7 +181,9 @@ pub fn start_host(room: Room, port: u16, player: Option<String>, capture: AppSta
                     let Some(state) = capture.try_capture() else {
                         return;
                     };
-                    state.set(AppState::Exception { kind: ExceptionType::PingServerRst });
+                    state.set(AppState::Exception {
+                        kind: ExceptionType::PingServerRst,
+                    });
                     return;
                 }
             }
@@ -189,12 +191,17 @@ pub fn start_host(room: Room, port: u16, player: Option<String>, capture: AppSta
             let Some(mut state) = capture.try_capture() else {
                 return;
             };
-            let AppState::HostOk { easytier, profiles, .. } = state.as_mut_ref() else {
+            let AppState::HostOk {
+                easytier, profiles, ..
+            } = state.as_mut_ref()
+            else {
                 unreachable!();
             };
 
             if !easytier.is_alive() {
-                state.set(AppState::Exception { kind: ExceptionType::HostEasytierCrash });
+                state.set(AppState::Exception {
+                    kind: ExceptionType::HostEasytierCrash,
+                });
                 return;
             }
 
@@ -202,8 +209,16 @@ pub fn start_host(room: Room, port: u16, player: Option<String>, capture: AppSta
             let now = SystemTime::now();
             for i in (1..profiles.len()).rev() {
                 let (time, profile) = &profiles[i];
-                if i != 0 && now.duration_since(*time).is_ok_and(|d| d >= Duration::from_secs(10)) {
-                    logging!("RoomExperiment", "Removing guest {}: timeout.", profile.get_name());
+                if i != 0
+                    && now
+                        .duration_since(*time)
+                        .is_ok_and(|d| d >= Duration::from_secs(10))
+                {
+                    logging!(
+                        "RoomExperiment",
+                        "Removing guest {}: timeout.",
+                        profile.get_name()
+                    );
                     profiles.remove(i);
                     changed = true;
                 }
@@ -215,18 +230,24 @@ pub fn start_host(room: Room, port: u16, player: Option<String>, capture: AppSta
     });
 }
 
-pub fn start_guest(room: Room, player: Option<String>, capture: AppStateCapture) {
-    let mut args = compute_arguments(&room, fetch_public_nodes(&room));
-    args.push(Argument::DHCP);
-    args.push(Argument::TcpWhitelist(0));
-    args.push(Argument::UdpWhitelist(0));
-    let easytier = easytier::create(args);
+pub fn start_guest(
+    room: Room,
+    player: Option<String>,
+    capture: AppStateCapture,
+    public_servers: &[&str],
+) {
+    let config = compute_arguments_guest(&room, public_servers);
+    let easytier = easytier::create_with_config(config);
     let capture = {
         let Some(state) = capture.try_capture() else {
             return;
         };
 
-        state.set(AppState::GuestStarting { room, easytier, difficulty: ConnectionDifficulty::Unknown })
+        state.set(AppState::GuestStarting {
+            room,
+            easytier,
+            difficulty: ConnectionDifficulty::Unknown,
+        })
     };
 
     let (scaffolding_port, host_ip) = 'local_port: {
@@ -237,11 +258,18 @@ pub fn start_guest(room: Room, player: Option<String>, capture: AppStateCapture)
                 return;
             };
             let mut state = state.into_slow();
-            let AppState::GuestStarting { easytier, difficulty, .. } = state.as_mut_ref() else {
+            let AppState::GuestStarting {
+                easytier,
+                difficulty,
+                ..
+            } = state.as_mut_ref()
+            else {
                 unreachable!();
             };
             if !easytier.is_alive() {
-                state.set(AppState::Exception { kind: ExceptionType::GuestEasytierCrash });
+                state.set(AppState::Exception {
+                    kind: ExceptionType::GuestEasytierCrash,
+                });
                 return;
             }
 
@@ -249,44 +277,68 @@ pub fn start_guest(room: Room, player: Option<String>, capture: AppStateCapture)
                 continue;
             };
 
-            let Some(local_nat) = players.iter().find_map(|EasyTierMember { is_local, nat, ..}| {
-                if *is_local {
-                    Some(nat)
-                } else {
-                    None
-                }
-            }) else {
+            let Some(local_nat) = players.iter().find_map(
+                |EasyTierMember { is_local, nat, .. }| {
+                    if *is_local { Some(nat) } else { None }
+                },
+            ) else {
                 continue;
             };
 
-            let Some((server_address, server_port, server_nat)) = players.iter().find_map(|
-                EasyTierMember { hostname, address, is_local, nat, .. }
-            | {
-                static PREFIX: &str = "scaffolding-mc-server-";
-
-                if let Some(address) = address && !is_local && hostname.starts_with(PREFIX) && let Ok(port) = u16::from_str(&hostname[PREFIX.len()..]) {
-                    Some((address, port, nat))
-                } else {
-                    None
-                }
-            }) else {
+            let Some((server_address, server_port, server_nat)) = players.iter().find_map(
+                |EasyTierMember {
+                     hostname,
+                     address,
+                     is_local,
+                     nat,
+                     ..
+                 }| {
+                    if let Some(address) = address
+                        && !is_local
+                        && hostname.starts_with(SERVER_PREFIX)
+                        && let Ok(port) = u16::from_str(&hostname[SERVER_PREFIX.len()..])
+                    {
+                        Some((address, port, nat))
+                    } else {
+                        None
+                    }
+                },
+            ) else {
                 continue;
             };
 
-            logging!("RoomExperiment", "Scaffolding Server is at {}:{}", server_address, server_port);
+            logging!(
+                "RoomExperiment",
+                "Scaffolding Server is at {}:{}",
+                server_address,
+                server_port
+            );
             let local_port = PortRequest::Scaffolding.request();
             if !easytier.add_port_forward(&[PortForward {
                 local: SocketAddrV4::new(Ipv4Addr::UNSPECIFIED, local_port).into(),
                 remote: SocketAddrV4::new(*server_address, server_port).into(),
-                proto: Proto::TCP,
+                socket_type: SocketType::Tcp,
             }]) {
-                logging!("RoomExperiment", "Cannot create a port-forward {} -> {} for Scaffolding Connection.", local_port, server_port);
-                state.set(AppState::Exception { kind: ExceptionType::GuestEasytierCrash });
+                logging!(
+                    "RoomExperiment",
+                    "Cannot create a port-forward {} -> {} for Scaffolding Connection.",
+                    local_port,
+                    server_port
+                );
+                state.set(AppState::Exception {
+                    kind: ExceptionType::GuestEasytierCrash,
+                });
                 return;
             };
 
             *difficulty = easytier::calc_conn_difficulty(local_nat, server_nat);
-            logging!("RoomExperiment", "Current NAT status: {:?} -> {:?}, difficulty = {:?}", local_nat, server_nat, difficulty);
+            logging!(
+                "RoomExperiment",
+                "Current NAT status: {:?} -> {:?}, difficulty = {:?}",
+                local_nat,
+                server_nat,
+                difficulty
+            );
             state.increase_shared();
 
             break 'local_port (local_port, *server_address);
@@ -296,7 +348,9 @@ pub fn start_guest(room: Room, player: Option<String>, capture: AppStateCapture)
         let Some(state) = capture.try_capture() else {
             return;
         };
-        state.set(AppState::Exception { kind: ExceptionType::PingHostFail });
+        state.set(AppState::Exception {
+            kind: ExceptionType::PingHostFail,
+        });
         return;
     };
 
@@ -304,18 +358,24 @@ pub fn start_guest(room: Room, player: Option<String>, capture: AppStateCapture)
         let Some(state) = capture.try_capture() else {
             return;
         };
-        state.set(AppState::Exception { kind: ExceptionType::PingHostFail });
+        state.set(AppState::Exception {
+            kind: ExceptionType::PingHostFail,
+        });
     }
 
     let mut session = 'session: {
         for _ in 0..60 {
             thread::sleep(Duration::from_secs(4));
 
-            const FINGERPRINT: [u8; 16] = [0x41, 0x57, 0x48, 0x44, 0x86, 0x37, 0x40, 0x59, 0x57, 0x44, 0x92, 0x43, 0x96, 0x99, 0x85, 0x01];
-            if let Ok(mut session) = ClientSession::open(IpAddr::V4(Ipv4Addr::LOCALHOST), scaffolding_port)
+            const FINGERPRINT: [u8; 16] = [
+                0x41, 0x57, 0x48, 0x44, 0x86, 0x37, 0x40, 0x59, 0x57, 0x44, 0x92, 0x43, 0x96, 0x99,
+                0x85, 0x01,
+            ];
+            if let Ok(mut session) =
+                ClientSession::open(IpAddr::V4(Ipv4Addr::LOCALHOST), scaffolding_port)
                 && let Some(response) = session.send_sync(("c", "ping"), |body| {
-                body.extend_from_slice(&FINGERPRINT);
-            })
+                    body.extend_from_slice(&FINGERPRINT);
+                })
             {
                 let PacketResponse::Ok { data } = response else {
                     unreachable!();
@@ -334,7 +394,9 @@ pub fn start_guest(room: Room, player: Option<String>, capture: AppStateCapture)
                 unreachable!();
             };
             if !easytier.is_alive() {
-                state.set(AppState::Exception { kind: ExceptionType::GuestEasytierCrash });
+                state.set(AppState::Exception {
+                    kind: ExceptionType::GuestEasytierCrash,
+                });
                 return;
             }
         }
@@ -382,28 +444,37 @@ pub fn start_guest(room: Room, player: Option<String>, capture: AppStateCapture)
                 SocketAddrV4::new(Ipv4Addr::UNSPECIFIED, local_port).into(),
                 SocketAddrV6::new(Ipv6Addr::UNSPECIFIED, local_port, 0, 0).into(),
             ];
-            let protos = [Proto::TCP, Proto::UDP];
+            let socket_types = [SocketType::Tcp, SocketType::Udp];
 
             // TODO: Compute SIZE automatically.
             const SIZE: usize = 4;
-            assert_eq!(locals.len() * protos.len(), SIZE);
-            let mut forwards: [MaybeUninit<PortForward>; SIZE] = [const { MaybeUninit::uninit() }; _];
+            assert_eq!(locals.len() * socket_types.len(), SIZE);
+            let mut forwards: [MaybeUninit<PortForward>; SIZE] =
+                [const { MaybeUninit::uninit() }; _];
             for (i, local) in locals.into_iter().enumerate() {
-                for (j, proto) in protos.iter().enumerate() {
+                for (j, socket_type) in socket_types.iter().enumerate() {
                     forwards[i * 2 + j].write(PortForward {
                         remote: SocketAddrV4::new(host_ip, port).into(),
                         local,
-                        proto: proto.clone(),
+                        socket_type: *socket_type
                     });
                 }
             }
             // SAFETY: These two types are of the same size and all elements have been properly initialized.
             unsafe { transmute::<[MaybeUninit<PortForward>; SIZE], [PortForward; SIZE]>(forwards) }
         }) {
-            logging!("RoomExperiment", "Cannot create a port-forward {} -> {} for MC Connection.", local_port, port);
-            state.set(AppState::Exception { kind: ExceptionType::GuestEasytierCrash });
+            logging!(
+                "RoomExperiment",
+                "Cannot create a port-forward {} -> {} for MC Connection.",
+                local_port,
+                port
+            );
+            state.set(AppState::Exception {
+                kind: ExceptionType::GuestEasytierCrash,
+            });
             return;
-        } else {}
+        } else {
+        }
 
         local_port
     };
@@ -420,7 +491,8 @@ pub fn start_guest(room: Room, player: Option<String>, capture: AppStateCapture)
         name: player.unwrap_or("Terracotta Anonymous Guest".to_string()),
         vendor: VENDOR.to_string(),
         kind: ProfileKind::LOCAL,
-    }.into_profile();
+    }
+    .into_profile();
 
     let capture = {
         let Some(state) = capture.try_capture() else {
@@ -446,11 +518,15 @@ pub fn start_guest(room: Room, player: Option<String>, capture: AppStateCapture)
 
             {
                 let Some(_) = session.send_sync(("c", "player_ping"), |body| {
-                    serde_json::to_writer(body, &json!({
-                        "machine_id": local_profile.get_machine_id(),
-                        "name": local_profile.get_name(),
-                        "vendor": local_profile.get_vendor()
-                    })).unwrap();
+                    serde_json::to_writer(
+                        body,
+                        &json!({
+                            "machine_id": local_profile.get_machine_id(),
+                            "name": local_profile.get_name(),
+                            "vendor": local_profile.get_vendor()
+                        }),
+                    )
+                    .unwrap();
                 }) else {
                     fail(capture);
                     return;
@@ -523,11 +599,16 @@ pub fn start_guest(room: Room, player: Option<String>, capture: AppStateCapture)
                 let Some(mut state) = capture.try_capture() else {
                     return;
                 };
-                let AppState::GuestOk { easytier, profiles, .. } = state.as_mut_ref() else {
+                let AppState::GuestOk {
+                    easytier, profiles, ..
+                } = state.as_mut_ref()
+                else {
                     unreachable!();
                 };
                 if !easytier.is_alive() {
-                    state.set(AppState::Exception { kind: ExceptionType::GuestEasytierCrash });
+                    state.set(AppState::Exception {
+                        kind: ExceptionType::GuestEasytierCrash,
+                    });
                     return;
                 }
 
@@ -536,8 +617,13 @@ pub fn start_guest(room: Room, player: Option<String>, capture: AppStateCapture)
                 for i in (0..profiles.len()).rev() {
                     let profile = &mut profiles[i];
                     match profile.get_kind() {
-                        ProfileKind::HOST => match server_profiles.binary_search_by_key(&profile.get_machine_id(), |p| p.get_machine_id()) {
-                            Ok(index) if !used[index] && *server_profiles[index].get_kind() == ProfileKind::HOST => {
+                        ProfileKind::HOST => match server_profiles
+                            .binary_search_by_key(&profile.get_machine_id(), |p| p.get_machine_id())
+                        {
+                            Ok(index)
+                                if !used[index]
+                                    && *server_profiles[index].get_kind() == ProfileKind::HOST =>
+                            {
                                 used[index] = true;
                                 if profile.get_name() != server_profiles[index].get_name() {
                                     profile.set_name(server_profiles[index].get_name().to_string());
@@ -545,18 +631,30 @@ pub fn start_guest(room: Room, player: Option<String>, capture: AppStateCapture)
                                 }
                             }
                             _ => {
-                                logging!("RoomExperiment", "API c:player_profiles_list invocation failed: Host Profile is consumed or invalid, machine_id may have conflict.");
-                                state.set(AppState::Exception { kind: ExceptionType::ScaffoldingInvalidResponse });
+                                logging!(
+                                    "RoomExperiment",
+                                    "API c:player_profiles_list invocation failed: Host Profile is consumed or invalid, machine_id may have conflict."
+                                );
+                                state.set(AppState::Exception {
+                                    kind: ExceptionType::ScaffoldingInvalidResponse,
+                                });
                                 return;
                             }
                         },
                         ProfileKind::LOCAL => {}
-                        ProfileKind::GUEST => match server_profiles.binary_search_by_key(&profile.get_machine_id(), |p| p.get_machine_id()) {
-                            Ok(index) if used[index] && *server_profiles[index].get_kind() == ProfileKind::GUEST => {
+                        ProfileKind::GUEST => match server_profiles
+                            .binary_search_by_key(&profile.get_machine_id(), |p| p.get_machine_id())
+                        {
+                            Ok(index)
+                                if used[index]
+                                    && *server_profiles[index].get_kind() == ProfileKind::GUEST =>
+                            {
                                 profiles.remove(i);
                                 changed = true;
                             }
-                            Ok(index) if *server_profiles[index].get_kind() == ProfileKind::GUEST => {
+                            Ok(index)
+                                if *server_profiles[index].get_kind() == ProfileKind::GUEST =>
+                            {
                                 used[index] = true;
                                 if profile.get_name() != server_profiles[index].get_name() {
                                     profile.set_name(server_profiles[index].get_name().to_string());
@@ -564,8 +662,13 @@ pub fn start_guest(room: Room, player: Option<String>, capture: AppStateCapture)
                                 }
                             }
                             Ok(_) => {
-                                logging!("RoomExperiment", "API c:player_profiles_list invocation failed: Guest Profile type is changed, machine_id may have conflict.");
-                                state.set(AppState::Exception { kind: ExceptionType::ScaffoldingInvalidResponse });
+                                logging!(
+                                    "RoomExperiment",
+                                    "API c:player_profiles_list invocation failed: Guest Profile type is changed, machine_id may have conflict."
+                                );
+                                state.set(AppState::Exception {
+                                    kind: ExceptionType::ScaffoldingInvalidResponse,
+                                });
                                 return;
                             }
                             Err(_) => {
@@ -592,48 +695,21 @@ pub fn start_guest(room: Room, player: Option<String>, capture: AppStateCapture)
     });
 }
 
-fn compute_arguments(room: &Room, public_servers: PublicServers) -> Vec<Argument> {
-    static DEFAULT_ARGUMENTS: [Argument; 8] = [
-        Argument::NoTun,
-        Argument::Compression(Cow::Borrowed("zstd")),
-        Argument::MultiThread,
-        Argument::LatencyFirst,
-        Argument::EnableKcpProxy,
-        Argument::Listener {
-            address: std::net::SocketAddr::V4(std::net::SocketAddrV4::new(std::net::Ipv4Addr::UNSPECIFIED, 0)),
-            proto: Proto::UDP,
-        },
-        Argument::Listener {
-            address: std::net::SocketAddr::V4(std::net::SocketAddrV4::new(std::net::Ipv4Addr::UNSPECIFIED, 0)),
-            proto: Proto::TCP,
-        },
-        Argument::P2POnly
-    ];
-
-    let mut args: Vec<Argument> = Vec::with_capacity(32);
-    args.extend_from_slice(&[
-        Argument::NetworkName(Cow::Owned(room.network_name.clone())),
-        Argument::NetworkSecret(Cow::Owned(room.network_secret.clone())),
-    ]);
-
-    for replay in public_servers {
-        args.push(Argument::PublicServer(Cow::Owned(replay)));
-    }
-
-    args.extend_from_slice(&DEFAULT_ARGUMENTS);
-    args
-}
-
 fn check_mc_conn(port: u16) -> bool {
     let start = SystemTime::now();
 
     let socket = Socket::new(Domain::IPV4, Type::STREAM, None).unwrap();
-    socket.set_read_timeout(Some(Duration::from_secs(64))).unwrap();
-    socket.set_write_timeout(Some(Duration::from_secs(64))).unwrap();
+    socket
+        .set_read_timeout(Some(Duration::from_secs(64)))
+        .unwrap();
+    socket
+        .set_write_timeout(Some(Duration::from_secs(64)))
+        .unwrap();
     if let Ok(_) = socket.connect_timeout(
         &SockAddr::from(SocketAddrV4::new(Ipv4Addr::new(127, 0, 0, 1), port)),
         Duration::from_secs(64),
-    ) && let Ok(_) = socket.send(&[0xFE]) {
+    ) && let Ok(_) = socket.send(&[0xFE])
+    {
         let mut buf: [MaybeUninit<u8>; _] = [MaybeUninit::uninit(); 1];
 
         if let Ok(size) = socket.recv(&mut buf) && size >= 1
@@ -650,4 +726,98 @@ fn check_mc_conn(port: u16) -> bool {
             .unwrap_or(Duration::ZERO),
     );
     false
+}
+
+/// 对房间计算 EasyTier 配置
+fn compute_arguments_common_config(room: &Room, public_servers: &[&str]) -> TomlConfigLoader {
+    use ::easytier::common::config::{
+        ConfigLoader, NetworkIdentity, PeerConfig, gen_default_flags,
+    };
+    use ::easytier::proto::common::CompressionAlgoPb;
+    let config = TomlConfigLoader::default();
+    let mut flags = gen_default_flags();
+    flags.no_tun = true;
+    flags.data_compress_algo = CompressionAlgoPb::Zstd.into();
+    flags.multi_thread = true;
+    flags.latency_first = true;
+    flags.enable_kcp_proxy = true;
+    config.set_listeners(vec![
+        "tcp://0.0.0.0:0".parse().unwrap(),
+        "udp://0.0.0.0:0".parse().unwrap(),
+    ]);
+    flags.p2p_only = true;
+    config.set_network_identity(NetworkIdentity::new(
+        room.network_name.clone(),
+        room.network_secret.clone(),
+    ));
+    config.set_peers(
+        public_servers
+            .iter()
+            .filter_map(|server| server.parse().ok())
+            .map(|uri| PeerConfig { uri })
+            .collect(),
+    );
+    config.set_port_forwards(Vec::new());
+    config.set_flags(flags);
+    config
+}
+
+/// 生成加入房间作为访客的 EasyTier 配置
+pub fn compute_arguments_guest(room: &Room, public_servers: &[&str]) -> TomlConfigLoader {
+    let config = compute_arguments_common_config(room, public_servers);
+    config.set_dhcp(true);
+    config.set_tcp_whitelist(vec![0.to_string()]);
+    config.set_udp_whitelist(vec![0.to_string()]);
+    config
+}
+
+/// 生成加入房间作为主机的 EasyTier 配置
+pub fn compute_arguments_host(
+    room: &Room,
+    port: u16,
+    public_servers: &[&str],
+    scaffolding_port: u16,
+) -> TomlConfigLoader {
+    let hostname = generate_hostname(scaffolding_port);
+    let ipv4 = std::net::Ipv4Addr::new(10, 144, 144, 1);
+    // 创建 EasyTier 配置
+    let network_config = compute_arguments_common_config(room, public_servers);
+    network_config.set_hostname(Some(hostname));
+    network_config.set_ipv4(Some(ipv4.into()));
+    network_config.set_tcp_whitelist(vec![scaffolding_port.to_string(), port.to_string()]);
+    network_config.set_udp_whitelist(vec![port.to_string()]);
+    network_config
+}
+
+/// scaffolding-mc 服务器主机名前缀
+static SERVER_PREFIX: &str = "scaffolding-mc-server-";
+
+/// 传入端口 生成Hostname
+pub fn generate_hostname(port: u16) -> String {
+    format!("{}{}", SERVER_PREFIX, port)
+}
+
+#[cfg(test)]
+mod tests {
+    use ::easytier::{
+        common::config::ConfigFileControl, launcher::NetworkInstance,
+        proto::common::CompressionAlgoPb,
+    };
+
+    use crate::easytier::publics::PUBLIC_NODES;
+
+    use super::*;
+
+    #[test]
+    fn test_gen_config() {
+        let room = parse("U/GA64-2LFU-VV7W-PP14").unwrap();
+        let config1 = compute_arguments_guest(&room, PUBLIC_NODES);
+        assert_eq!(
+            config1.get_flags().data_compress_algo,
+            CompressionAlgoPb::Zstd as i32
+        );
+        let mut instance = NetworkInstance::new(config1, ConfigFileControl::STATIC_CONFIG);
+        instance.start().unwrap();
+        assert!(instance.config.get_network_identity().network_secret_digest.is_some());
+    }
 }
