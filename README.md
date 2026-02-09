@@ -6,13 +6,12 @@ Terracotta 为游玩 Minecraft: Java Edition 的玩家提供开箱即用的联�
 
 ## 下载
 
-可在 [Releases](https://github.com/burningtnt/Terracotta/releases) 页面下载对应平台的发行包。
-
-如下载缓慢，可尝试使用[国内镜像](https://gitee.com/burningtnt/Terracotta/releases)
+> [!INFO]
+> 作为 PCL.Proto 提供的陶瓦分支，此仓库仅作为库使用，不提供发行包。如果您正在寻找可直接下载使用的应用，可以直接下载 [PCL.Proto](https://github.com/PCL-Community/PCL.Proto/releases) 并使用其中的联机版块。如果您正在寻找原版的陶瓦联机仓库，请前往 [Terracotta](https://github.com/burningtnt/Terracotta)。
 
 ## 作为库使用
 
-Terracotta 也可以作为 Rust 库集成到您的项目中。本仓库维护了一个支持支持Rust stable 版本并可作为库使用的分支。
+本仓库支持 Rust stable 版本，可作为依赖库集成到您的项目中。
 
 ### 添加依赖
 
@@ -20,7 +19,7 @@ Terracotta 也可以作为 Rust 库集成到您的项目中。本仓库维护了
 
 ```toml
 [dependencies]
-terracotta = { git = "https://github.com/PCL-Community/Terracotta-lib.git", version = "2.5.0-pcl.proto" }
+terracotta = { git = "https://github.com/PCL-Community/PCL.Proto.git", version = "2.5.0-pcl.proto" }
 ```
 
 ### 初始化
@@ -63,17 +62,6 @@ pub fn set_terracotta_guesting(room_code: String, player: String) -> Result<(), 
     }
 }
 ```
-
-### API 参考
-
-主要模块和函数：
-
-- `terracotta::init_lib(path: PathBuf)` - 初始化库
-- `terracotta::controller::get_state() -> serde_json::Value` - 获取当前状态
-- `terracotta::controller::set_waiting()` - 设置为等待状态
-- `terracotta::controller::set_scanning(room: Option<Room>, player: Option<String>)` - 开始主机扫描
-- `terracotta::controller::set_guesting(room: Room, player: Option<String>) -> bool` - 加入房间作为客人
-- `terracotta::rooms::Room` - 房间相关功能
 
 ## 平台特定要求
 
