@@ -2,18 +2,12 @@
 
 // pub type PublicServers = Vec<String>;
 
-// pub fn fetch_public_nodes(_: &Room) -> PublicServers {
-//     Vec::from([
-//         "tcp://public.easytier.top:11010",
-//         "tcp://public2.easytier.cn:54321",
-//         "https://etnode.zkitefly.eu.org/node1",
-//         "https://etnode.zkitefly.eu.org/node2",
-//     ].map(|s| s.into()))
-// }
-
-pub const PUBLIC_NODES: &[&str] = &[
-    "tcp://public.easytier.top:11010",
-    "tcp://public2.easytier.cn:54321",
-    "https://etnode.zkitefly.eu.org/node1",
-    "https://etnode.zkitefly.eu.org/node2",
-];
+pub fn fetch_public_nodes(mut external_nodes: Vec<String>) -> Vec<String> {
+    external_nodes.extend_from_slice(&[
+        "tcp://public.easytier.top:11010",
+        "tcp://public2.easytier.cn:54321",
+        "https://etnode.zkitefly.eu.org/node1",
+        "https://etnode.zkitefly.eu.org/node2",
+    ].map(|s| s.into()));
+    external_nodes
+}

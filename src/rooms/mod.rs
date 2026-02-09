@@ -172,7 +172,7 @@ impl Room {
     }
 
     /// 对房间计算 EasyTier 配置
-    fn compute_arguments_common_config(&self, public_servers: &[&str]) -> TomlConfigLoader {
+    fn compute_arguments_common_config(&self, public_servers: &[String]) -> TomlConfigLoader {
         use ::easytier::common::config::{
             ConfigLoader, NetworkIdentity, PeerConfig, gen_default_flags,
         };
@@ -209,7 +209,7 @@ impl Room {
     }
 
     /// 生成加入房间作为访客的 EasyTier 配置
-    pub fn compute_arguments_guest(&self, public_servers: &[&str]) -> TomlConfigLoader {
+    pub fn compute_arguments_guest(&self, public_servers: &[String]) -> TomlConfigLoader {
         let config = self.compute_arguments_common_config(public_servers);
         config.set_dhcp(true);
         config.set_tcp_whitelist(vec![0.to_string()]);
@@ -221,13 +221,13 @@ impl Room {
     pub fn compute_arguments_host(
         &self,
         port: u16,
-        public_servers: &[&str],
+        public_servers: &[String],
         scaffolding_port: u16,
     ) -> TomlConfigLoader {
         let hostname = generate_hostname(scaffolding_port);
         let ipv4 = std::net::Ipv4Addr::new(10, 144, 144, 1);
         // 创建 EasyTier 配置
-        let network_config = self.compute_arguments_common_config(public_servers);
+        let network_config = self.compute_arguments_common_config(&public_servers);
         network_config.set_hostname(Some(hostname));
         network_config.set_ipv4(Some(ipv4.into()));
         network_config.set_tcp_whitelist(vec![scaffolding_port.to_string(), port.to_string()]);
@@ -240,7 +240,7 @@ impl Room {
         port: u16,
         player: Option<String>,
         capture: AppStateCapture,
-        public_servers: &[&str],
+        public_servers: &[String],
     ) {
         let scaffolding_port = *SCAFFOLDING_PORT;
         let config = self.compute_arguments_host(port, public_servers, scaffolding_port);
@@ -333,7 +333,7 @@ impl Room {
         self,
         player: Option<String>,
         capture: AppStateCapture,
-        public_servers: &[&str],
+        public_servers: &[String],
     ) {
         let config = self.compute_arguments_guest(public_servers);
         let easytier = crate::easytier::create_with_config(config);
@@ -808,14 +808,14 @@ impl Room {
 
 #[cfg(test)]
 mod tests {
-    use crate::{easytier::publics::PUBLIC_NODES, rooms::Room};
+    use crate::{easytier::publics::fetch_public_nodes, rooms::Room};
     use ::easytier::proto::common::CompressionAlgoPb;
     use easytier::common::config::ConfigLoader;
 
     #[test]
     fn test_gen_config() {
         let room = Room::from("U/GA64-2LFU-VV7W-PP14").unwrap();
-        let config1 = room.compute_arguments_guest(PUBLIC_NODES);
+        let config1 = room.compute_arguments_guest(&fetch_public_nodes(Vec::new()));
         assert_eq!(
             config1.get_flags().data_compress_algo,
             CompressionAlgoPb::Zstd as i32

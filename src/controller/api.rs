@@ -1,7 +1,7 @@
 use crate::MOTD;
 use crate::controller::states::{AppState, ExceptionType};
 use crate::easytier::ConnectionDifficulty;
-use crate::easytier::publics::PUBLIC_NODES;
+use crate::easytier::publics::fetch_public_nodes;
 use crate::mc::scanning::MinecraftScanner;
 use crate::rooms::Room;
 use crate::scaffolding::profile::Profile;
@@ -96,7 +96,7 @@ pub fn set_waiting() {
     state.set(AppState::Waiting);
 }
 
-pub fn set_scanning(room: Option<String>, player: Option<String>) {
+pub fn set_scanning(room: Option<String>, player: Option<String>, public_nodes: Vec<String>) {
     let capture = {
         let state = AppState::acquire();
         if !matches!(state.as_ref(), AppState::Waiting) {
@@ -117,7 +117,7 @@ pub fn set_scanning(room: Option<String>, player: Option<String>) {
         let (sender, receiver) = mpsc::channel();
         thread::spawn(move || {
             // EasyTier Uptime is undergoing DDOS attack, so it's crucial to perform a prefetch logic.
-            let _ = sender.send(PUBLIC_NODES);
+            let _ = sender.send(fetch_public_nodes(public_nodes));
         });
 
         let (room, port, capture) = loop {
@@ -139,7 +139,7 @@ pub fn set_scanning(room: Option<String>, player: Option<String>) {
             }
         };
 
-        room.start_host(port, player, capture, receiver.recv().unwrap())
+        room.start_host(port, player, capture, &receiver.recv().unwrap())
     });
 }
 
@@ -167,11 +167,11 @@ pub fn set_host_starting(mc_port: u16, player: Option<String>) -> Option<String>
         port: mc_port,
     });
     logging!("Core", "Setting to state HOST_STARTING.");
-    thread::spawn(move || room.start_host(mc_port, player, capture, PUBLIC_NODES));
+    thread::spawn(move || room.start_host(mc_port, player, capture, &fetch_public_nodes(Vec::new())));
     Some(room_code)
 }
 
-pub fn set_guesting(room: Room, player: Option<String>) -> bool {
+pub fn set_guesting(room: Room, player: Option<String>, public_nodes: Vec<String>) -> bool {
     let capture = {
         let state = AppState::acquire();
         if !matches!(state.as_ref(), AppState::Waiting { .. }) {
@@ -180,6 +180,10 @@ pub fn set_guesting(room: Room, player: Option<String>) -> bool {
         state.set(AppState::GuestConnecting { room: room.clone() })
     };
     logging!("Core", "Connecting to room, code={}", room.code);
-    thread::spawn(move || room.start_guest(player, capture, PUBLIC_NODES));
+    thread::spawn(move || {
+        let public_nodes = fetch_public_nodes(public_nodes);
+        room.start_guest(player, capture, &public_nodes);
+    });
+
     true
 }
