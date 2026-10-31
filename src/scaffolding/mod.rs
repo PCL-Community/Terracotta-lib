@@ -2,8 +2,8 @@ use std::io;
 use std::time::Duration;
 
 pub mod client;
-pub mod server;
 pub mod profile;
+pub mod server;
 
 pub(crate) static TIMEOUT: Duration = Duration::from_secs(64);
 
@@ -13,11 +13,11 @@ pub enum PacketResponse {
 }
 
 impl PacketResponse {
-    pub fn ok(data: Vec<u8>) -> io::Result<PacketResponse<>> {
+    pub fn ok(data: Vec<u8>) -> io::Result<PacketResponse> {
         Ok(PacketResponse::Ok { data })
     }
 
-    pub fn fail(status: u8, data: Vec<u8>) -> io::Result<PacketResponse<>> {
+    pub fn fail(status: u8, data: Vec<u8>) -> io::Result<PacketResponse> {
         Ok(PacketResponse::Fail { status, data })
     }
 }

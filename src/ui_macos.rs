@@ -1,8 +1,17 @@
 use objc2::{
-    define_class, msg_send, rc::Retained, runtime::{AnyObject, ProtocolObject}, sel, ClassType, MainThreadOnly
+    ClassType, MainThreadOnly, define_class, msg_send,
+    rc::Retained,
+    runtime::{AnyObject, ProtocolObject},
+    sel,
 };
-use objc2_app_kit::{NSApplication, NSWindow, NSWindowDelegate, NSBackingStoreType, NSWindowStyleMask, NSColor, NSAutoresizingMaskOptions, NSApplicationActivationPolicy};
-use objc2_foundation::{MainThreadMarker, NSObject, NSObjectNSThreadPerformAdditions, NSObjectProtocol, NSPoint, NSRect, NSSize, NSString, NSURLRequest, NSURL};
+use objc2_app_kit::{
+    NSApplication, NSApplicationActivationPolicy, NSAutoresizingMaskOptions, NSBackingStoreType,
+    NSColor, NSWindow, NSWindowDelegate, NSWindowStyleMask,
+};
+use objc2_foundation::{
+    MainThreadMarker, NSObject, NSObjectNSThreadPerformAdditions, NSObjectProtocol, NSPoint,
+    NSRect, NSSize, NSString, NSURL, NSURLRequest,
+};
 #[allow(unused_imports)]
 use objc2_web_kit::{WKNavigationDelegate, WKWebView, WKWebViewConfiguration};
 
@@ -37,7 +46,11 @@ pub fn open(url: String) {
         let frame = NSRect::new(NSPoint::new(0., 0.), NSSize::new(1000., 700.));
         let window = NSWindow::initWithContentRect_styleMask_backing_defer(
             NSWindow::alloc(mtm),
-            frame, NSWindowStyleMask::Titled | NSWindowStyleMask::Closable | NSWindowStyleMask::Miniaturizable | NSWindowStyleMask::Resizable,
+            frame,
+            NSWindowStyleMask::Titled
+                | NSWindowStyleMask::Closable
+                | NSWindowStyleMask::Miniaturizable
+                | NSWindowStyleMask::Resizable,
             NSBackingStoreType::Buffered,
             false,
         );
@@ -50,7 +63,8 @@ pub fn open(url: String) {
 
         let color = NSColor::colorWithRed_green_blue_alpha(0.102, 0.102, 0.18, 1.0);
         window.setBackgroundColor(Some(color.as_ref()));
-        let _: () = msg_send![Retained::as_ptr(&window), setBackgroundColor: color.as_ref() as &NSColor];
+        let _: () =
+            msg_send![Retained::as_ptr(&window), setBackgroundColor: color.as_ref() as &NSColor];
 
         // webview.setBackgroundColor(Some(color.as_ref()));
         // webview.setHidden(Bool::YES);
@@ -66,9 +80,11 @@ pub fn open(url: String) {
                 let webview = Retained::from_raw(webview.load(Acquire)).unwrap();
                 loop {
                     let title = webview.title();
-                    if let Some(title) = title &&  objc2::rc::autoreleasepool(|pool| {
-                        return NSString::to_str(&title, pool).contains("Terracotta");
-                    }) {
+                    if let Some(title) = title
+                        && objc2::rc::autoreleasepool(|pool| {
+                            return NSString::to_str(&title, pool).contains("Terracotta");
+                        })
+                    {
                         std::thread::sleep(std::time::Duration::from_millis(200));
 
                         let webview = webview.downcast::<NSObject>().unwrap();
@@ -80,14 +96,19 @@ pub fn open(url: String) {
         }
 
         let url_str = NSString::from_str(&url);
-        webview.loadRequest(&NSURLRequest::requestWithURL(&NSURL::URLWithString(url_str.as_ref()).unwrap()));
+        webview.loadRequest(&NSURLRequest::requestWithURL(
+            &NSURL::URLWithString(url_str.as_ref()).unwrap(),
+        ));
 
         // Add observer for page load completion
         // let observer: *mut AnyObject = msg_send![WebviewObserver::class(), new];
         // let _: () = msg_send![webview, setNavigationDelegate: observer];
 
         window.contentView().unwrap().addSubview(webview.as_ref());
-        webview.setAutoresizingMask(NSAutoresizingMaskOptions::ViewWidthSizable | NSAutoresizingMaskOptions::ViewHeightSizable);
+        webview.setAutoresizingMask(
+            NSAutoresizingMaskOptions::ViewWidthSizable
+                | NSAutoresizingMaskOptions::ViewHeightSizable,
+        );
 
         let delegate: *mut AnyObject = msg_send![AppDelegate::class(), new];
         let delegate = Retained::<AppDelegate>::from_raw(delegate as _).unwrap();

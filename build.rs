@@ -1,8 +1,5 @@
 use sevenz_rust2;
-use std::{
-    env,
-    path::Path,
-};
+use std::{env, path::Path};
 
 fn main() {
     println!("cargo::rerun-if-changed=Cargo.toml");
@@ -12,9 +9,9 @@ fn main() {
         let mut input = std::fs::read_to_string(
             Path::new(&get_var("CARGO_MANIFEST_DIR").unwrap()).join("Cargo.toml"),
         )
-            .unwrap()
-            .parse::<toml::Table>()
-            .unwrap();
+        .unwrap()
+        .parse::<toml::Table>()
+        .unwrap();
 
         for key in "package.metadata.easytier".split(".") {
             input = match input.into_iter().find(|(k, _)| k == key).unwrap().1 {
@@ -36,7 +33,8 @@ fn main() {
 
     let desc = get_var("TARGET").unwrap().replace('-', "_").to_uppercase();
 
-    let version = get_var("TERRACOTTA_VERSION").unwrap_or_else(|_| "ver. PCL.Proto 0.8.0".to_string());
+    let version =
+        get_var("TERRACOTTA_VERSION").unwrap_or_else(|_| "ver. PCL.Proto 0.8.0".to_string());
     println!("cargo::rustc-env=TERRACOTTA_VERSION={}", version);
 
     let target_family = get_var("CARGO_CFG_TARGET_FAMILY").unwrap().to_string();
@@ -68,8 +66,6 @@ fn main() {
         }
     }
 }
-
-
 
 pub fn get_var<K: AsRef<std::ffi::os_str::OsStr>>(key: K) -> Result<String, env::VarError> {
     println!(

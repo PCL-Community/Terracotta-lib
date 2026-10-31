@@ -1,13 +1,13 @@
-use std::fmt::{Debug, Formatter};
 use crate::easytier::{ConnectionDifficulty, EasyTier};
 use crate::mc::fakeserver::FakeServer;
 use crate::mc::scanning::MinecraftScanner;
+use crate::rooms::Room;
+use crate::scaffolding::profile::Profile;
+use parking_lot::{Mutex, MutexGuard};
+use std::fmt::{Debug, Formatter};
 use std::mem;
 use std::panic::Location;
 use std::time::{Duration, SystemTime};
-use parking_lot::{Mutex, MutexGuard};
-use crate::rooms::Room;
-use crate::scaffolding::profile::Profile;
 
 pub enum AppState {
     Waiting,
@@ -32,7 +32,7 @@ pub enum AppState {
     GuestStarting {
         room: Room,
         easytier: EasyTier,
-        difficulty: ConnectionDifficulty
+        difficulty: ConnectionDifficulty,
     },
     GuestOk {
         room: Room,
@@ -50,24 +50,49 @@ impl Debug for AppState {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         match self {
             AppState::Waiting => write!(f, "AppState::Waiting"),
-            AppState::HostScanning { ..  } => {
+            AppState::HostScanning { .. } => {
                 write!(f, "AppState::HostScanning {{ scanner: .. }}")
             }
             AppState::HostStarting { room, port } => {
-                write!(f, "AppState::HostStarting {{ code: {:?}, port: {} }}", room.code, port)
+                write!(
+                    f,
+                    "AppState::HostStarting {{ code: {:?}, port: {} }}",
+                    room.code, port
+                )
             }
-            AppState::HostOk { room, port, profiles, .. } => {
-                write!(f, "AppState::HostOk {{ code: {:?}, port: {}, easytier: .., profiles: {:?} }}", room.code, port, profiles)
+            AppState::HostOk {
+                room,
+                port,
+                profiles,
+                ..
+            } => {
+                write!(
+                    f,
+                    "AppState::HostOk {{ code: {:?}, port: {}, easytier: .., profiles: {:?} }}",
+                    room.code, port, profiles
+                )
             }
             AppState::GuestConnecting { room } => {
                 write!(f, "AppState::GuestConnecting {{ code: {:?} }}", room.code)
             }
-            AppState::GuestStarting { room, difficulty, .. } => {
-                write!(f, "AppState::GuestStarting {{ code: {:?}, difficulty: {:?}, easytier: .. }}", room.code, difficulty)
-            }
-            AppState::GuestOk { room, server, profiles, .. } => {
+            AppState::GuestStarting {
+                room, difficulty, ..
+            } => {
                 write!(
-                    f, "AppState::GuestOk {{ code: {:?}, server_port: {}, easytier: .., profiles: {:?} }}",
+                    f,
+                    "AppState::GuestStarting {{ code: {:?}, difficulty: {:?}, easytier: .. }}",
+                    room.code, difficulty
+                )
+            }
+            AppState::GuestOk {
+                room,
+                server,
+                profiles,
+                ..
+            } => {
+                write!(
+                    f,
+                    "AppState::GuestOk {{ code: {:?}, server_port: {}, easytier: .., profiles: {:?} }}",
                     room.code, server.port, profiles
                 )
             }
@@ -94,7 +119,7 @@ pub struct AppStateContainer {
 }
 
 pub struct AppStateCapture {
-    index: u32
+    index: u32,
 }
 
 struct Holder {
@@ -106,9 +131,16 @@ struct Holder {
 impl AppState {
     #[track_caller]
     pub fn acquire() -> AppStateContainer {
-        static GLOBAL_STATE: Mutex<Holder> = Mutex::new(Holder { index: 0, sharing: 0, value: AppState::Waiting});
+        static GLOBAL_STATE: Mutex<Holder> = Mutex::new(Holder {
+            index: 0,
+            sharing: 0,
+            value: AppState::Waiting,
+        });
 
-        AppStateContainer { state: GLOBAL_STATE.lock(), measure: Some((SystemTime::now(), Location::caller())) }
+        AppStateContainer {
+            state: GLOBAL_STATE.lock(),
+            measure: Some((SystemTime::now(), Location::caller())),
+        }
     }
 }
 
@@ -137,7 +169,7 @@ impl AppStateContainer {
 
     pub fn replace<F>(mut self, f: F) -> AppStateCapture
     where
-        F: FnOnce(AppState) -> AppState
+        F: FnOnce(AppState) -> AppState,
     {
         let legacy = mem::replace(&mut self.state.value, AppState::Waiting);
         let _ = mem::replace(&mut self.state.value, f(legacy));
@@ -150,7 +182,9 @@ impl AppStateContainer {
         self.state.sharing = 0;
 
         logging!("State", "Switch to {:?}", &self.state.value);
-        AppStateCapture { index: self.state.index }
+        AppStateCapture {
+            index: self.state.index,
+        }
     }
 
     pub fn increase_shared(mut self) {
@@ -163,9 +197,9 @@ impl AppStateContainer {
 
 impl Drop for AppStateContainer {
     fn drop(&mut self) {
-        if let Some((time, location)) = self.measure &&
-            let Ok(d) = SystemTime::now().duration_since(time) &&
-            d >= Duration::from_millis(150)
+        if let Some((time, location)) = self.measure
+            && let Ok(d) = SystemTime::now().duration_since(time)
+            && d >= Duration::from_millis(150)
         {
             cfg_if::cfg_if! {
                 if #[cfg(debug_assertions)] {

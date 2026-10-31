@@ -2,9 +2,9 @@ use crate::scaffolding::{PacketResponse, TIMEOUT};
 use socket2::{Domain, SockAddr, Socket, Type};
 use std::io::{Read, Write};
 use std::net::{IpAddr, SocketAddr};
-use std::sync::{mpsc, Arc, OnceLock};
-use std::{io, thread};
+use std::sync::{Arc, OnceLock, mpsc};
 use std::time::Duration;
+use std::{io, thread};
 
 struct Packet {
     data: Vec<u8>,
@@ -29,42 +29,38 @@ impl ClientSession {
 
         socket.set_read_timeout(Some(TIMEOUT))?;
         socket.set_write_timeout(Some(TIMEOUT))?;
-        socket.connect_timeout(
-            &SockAddr::from(SocketAddr::new(address, port)),
-            TIMEOUT,
-        )?;
+        socket.connect_timeout(&SockAddr::from(SocketAddr::new(address, port)), TIMEOUT)?;
 
         let (sender, receiver) = mpsc::channel::<Packet>();
         let alive = Arc::new(OnceLock::new());
         let alive2 = alive.clone();
 
         thread::spawn(move || {
-            let handle_packet =
-                &mut move |data: Vec<u8>| -> io::Result<PacketResponse> {
-                    socket.write_all(data.as_ref())?;
-                    socket.flush()?;
+            let handle_packet = &mut move |data: Vec<u8>| -> io::Result<PacketResponse> {
+                socket.write_all(data.as_ref())?;
+                socket.flush()?;
 
-                    drop(data);
+                drop(data);
 
-                    let (status, body_size) = {
-                        let mut buf = [0u8; 5];
-                        socket.read_exact(&mut buf)?;
+                let (status, body_size) = {
+                    let mut buf = [0u8; 5];
+                    socket.read_exact(&mut buf)?;
 
-                        (
-                            buf[0],
-                            u32::from_be_bytes([buf[1], buf[2], buf[3], buf[4]]) as usize,
-                        )
-                    };
-
-                    let mut data = vec![0u8; body_size];
-                    socket.read_exact(&mut data)?;
-
-                    Ok(if status == 0 {
-                        PacketResponse::Ok { data }
-                    } else {
-                        PacketResponse::Fail { status, data }
-                    })
+                    (
+                        buf[0],
+                        u32::from_be_bytes([buf[1], buf[2], buf[3], buf[4]]) as usize,
+                    )
                 };
+
+                let mut data = vec![0u8; body_size];
+                socket.read_exact(&mut data)?;
+
+                Ok(if status == 0 {
+                    PacketResponse::Ok { data }
+                } else {
+                    PacketResponse::Fail { status, data }
+                })
+            };
 
             while let Ok(packet) = receiver.recv() {
                 let Packet { data, handle } = packet;
@@ -105,19 +101,36 @@ impl ClientSession {
                 Ok(response) => break response,
                 Err(mpsc::RecvTimeoutError::Disconnected) => unreachable!(),
                 Err(mpsc::RecvTimeoutError::Timeout) if !self.is_alive() => {
-                    logging!("ScaffoldingClient", "API {}:{} invocation failed: Session has been closed.", kind.0, kind.1);
+                    logging!(
+                        "ScaffoldingClient",
+                        "API {}:{} invocation failed: Session has been closed.",
+                        kind.0,
+                        kind.1
+                    );
                     return None;
-                },
+                }
                 Err(mpsc::RecvTimeoutError::Timeout) => continue,
             }
         } {
             Some(PacketResponse::Ok { data }) => Some(PacketResponse::Ok { data }),
             Some(PacketResponse::Fail { status, data }) => {
-                logging!("ScaffoldingClient", "API {}:{} invocation failed with status {}: {}", kind.0, kind.1, status, String::from_utf8_lossy(&data));
+                logging!(
+                    "ScaffoldingClient",
+                    "API {}:{} invocation failed with status {}: {}",
+                    kind.0,
+                    kind.1,
+                    status,
+                    String::from_utf8_lossy(&data)
+                );
                 None
-            },
+            }
             None => {
-                logging!("ScaffoldingClient", "API {}:{} invocation failed: Session has been closed.", kind.0, kind.1);
+                logging!(
+                    "ScaffoldingClient",
+                    "API {}:{} invocation failed: Session has been closed.",
+                    kind.0,
+                    kind.1
+                );
                 None
             }
         }

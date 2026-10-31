@@ -1,4 +1,9 @@
-use std::{path::PathBuf, sync::{Arc, RwLock}, thread, time::Duration};
+use std::{
+    path::PathBuf,
+    sync::{Arc, RwLock},
+    thread,
+    time::Duration,
+};
 
 use rocket::http::Status;
 

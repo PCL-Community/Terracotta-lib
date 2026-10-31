@@ -17,14 +17,19 @@ fn set_state_ide() -> Status {
 }
 
 #[get("/scanning?<room>&<player>&<public_nodes>")]
-fn set_state_scanning(room: Option<String>, player: Option<String>, public_nodes: Vec<String>) -> Status {
+fn set_state_scanning(
+    room: Option<String>,
+    player: Option<String>,
+    public_nodes: Vec<String>,
+) -> Status {
     controller::set_scanning(room, player, public_nodes);
     Status::Ok
 }
 
 #[get("/guesting?<room>&<player>&<public_nodes>")]
 fn set_state_guesting(room: &str, player: Option<String>, public_nodes: Vec<String>) -> Status {
-    if let Some(room) = Room::from(room) && controller::set_guesting(room, player, public_nodes)
+    if let Some(room) = Room::from(room)
+        && controller::set_guesting(room, player, public_nodes)
     {
         return Status::Ok;
     }

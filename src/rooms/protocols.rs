@@ -1,10 +1,10 @@
 use crate::controller::states::AppState;
+use crate::scaffolding::PacketResponse;
 use crate::scaffolding::profile::{ProfileKind, ProfileSnapshot};
 use crate::scaffolding::server::Handlers;
-use crate::scaffolding::PacketResponse;
-use serde::ser::SerializeSeq;
 use serde::Serializer as _;
-use serde_json::{json, Serializer, Value};
+use serde::ser::SerializeSeq;
+use serde_json::{Serializer, Value, json};
 use std::io;
 use std::time::SystemTime;
 

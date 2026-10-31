@@ -1,6 +1,5 @@
 #![cfg_attr(all(target_os = "windows"), windows_subsystem = "windows")]
 
-
 #[cfg(not(any(
     target_os = "windows",
     target_os = "linux",
@@ -29,6 +28,7 @@ extern crate core;
 
 use lazy_static::lazy_static;
 
+use chrono::{FixedOffset, TimeZone, Utc};
 use std::{
     env, fs,
     io::Write,
@@ -37,13 +37,12 @@ use std::{
     thread,
     time::{Duration, SystemTime},
 };
-use chrono::{FixedOffset, TimeZone, Utc};
 
 pub mod controller;
 pub mod easytier;
-pub mod server;
-pub mod scaffolding;
 pub mod rooms;
+pub mod scaffolding;
+pub mod server;
 
 #[cfg(target_family = "windows")]
 pub mod logging_windows;
@@ -404,9 +403,11 @@ async fn main_single(state: Option<Lock>, mode: Mode) {
     let port_callback2 = port_callback.clone();
 
     logging!(
-        "UI", "Welcome using Terracotta v{}, compiled at {}. Easytier: {}. Target: {}-{}-{}-{}.",
+        "UI",
+        "Welcome using Terracotta v{}, compiled at {}. Easytier: {}. Target: {}-{}-{}-{}.",
         env!("TERRACOTTA_VERSION"),
-        Utc.timestamp_millis_opt(timestamp::compile_time!() as i64).unwrap()
+        Utc.timestamp_millis_opt(timestamp::compile_time!() as i64)
+            .unwrap()
             .with_timezone(&FixedOffset::east_opt(8 * 3600).unwrap())
             .format("%Y-%m-%d %H:%M:%S"),
         env!("TERRACOTTA_ET_VERSION"),
@@ -476,16 +477,28 @@ async fn secondary_switch(port: u16) -> Option<Lock> {
     let client = reqwest::Client::new();
 
     let body = client
-        .get(format!("http://127.0.0.1:{}/meta", port)).send().await.ok()?
-        .text().await.ok()?;
-    let compile_timestamp = serde_json::from_str::<'_, serde_json::Value>(&body).ok()?
-        .get("compile_timestamp")?.as_str()?.parse::<u128>().ok()?;
+        .get(format!("http://127.0.0.1:{}/meta", port))
+        .send()
+        .await
+        .ok()?
+        .text()
+        .await
+        .ok()?;
+    let compile_timestamp = serde_json::from_str::<'_, serde_json::Value>(&body)
+        .ok()?
+        .get("compile_timestamp")?
+        .as_str()?
+        .parse::<u128>()
+        .ok()?;
 
     if timestamp::compile_time!() <= compile_timestamp {
         return None;
     }
 
-    let _ = client.get(format!("http://127.0.0.1:{}/panic?peaceful=true", port)).send().await;
+    let _ = client
+        .get(format!("http://127.0.0.1:{}/panic?peaceful=true", port))
+        .send()
+        .await;
     rocket::tokio::time::sleep(Duration::from_millis(3000)).await;
 
     let state = Lock::get_state();
@@ -495,9 +508,12 @@ async fn secondary_switch(port: u16) -> Option<Lock> {
             Some(state)
         }
         Lock::Secondary { .. } | Lock::Unknown => {
-            logging!("UI", "Failed to take over from legacy Terracotta: global mutex hasn't been released after 3000ms.");
+            logging!(
+                "UI",
+                "Failed to take over from legacy Terracotta: global mutex hasn't been released after 3000ms."
+            );
             None
-        },
+        }
     }
 }
 

@@ -32,10 +32,8 @@ macro_rules! try_jvm {
 }
 
 use crate::once_cell::OnceCell;
+use std::net::{IpAddr, Ipv4Addr, Ipv6Addr};
 use std::path::PathBuf;
-use std::{
-    net::{IpAddr, Ipv4Addr, Ipv6Addr},
-};
 
 // 仅在 Android 平台上使用 JNI
 #[cfg(target_os = "android")]
@@ -57,7 +55,7 @@ use {
     libc::{c_char, c_int},
     std::{
         env,
-        ffi::{c_void, CString},
+        ffi::{CString, c_void},
         fs::File,
         io::Write,
         sync::{Arc, Mutex, MutexGuard},

@@ -167,7 +167,9 @@ pub fn set_host_starting(mc_port: u16, player: Option<String>) -> Option<String>
         port: mc_port,
     });
     logging!("Core", "Setting to state HOST_STARTING.");
-    thread::spawn(move || room.start_host(mc_port, player, capture, &fetch_public_nodes(Vec::new())));
+    thread::spawn(move || {
+        room.start_host(mc_port, player, capture, &fetch_public_nodes(Vec::new()))
+    });
     Some(room_code)
 }
 

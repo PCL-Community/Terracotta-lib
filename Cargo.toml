@@ -5,35 +5,38 @@ edition = "2024"
 build = "build.rs"
 
 [package.metadata.easytier]
-version = "v2.5.0-terracotta.2"
+version = "v2.6.4"
 
 [dependencies]
-cfg-if = "1.0.1"
-chrono = { version = "0.4.41", default-features = false, features = [
+cfg-if = "1.0.5"
+chrono = { version = "0.4.45", default-features = false, features = [
     "clock",
     "std",
     "alloc",
 ] }
-lazy_static = "1.5.0"
-libc = "0.2.174"
-local-ip-address = "0.6.7"
-num-bigint = "0.4.6"
-open = { version = "5.3.2", default-features = false }
+lazy_static = "1.5.1"
+libc = "0.2.191"
+local-ip-address = "0.6.13"
+num-bigint = "0.5.1"
+open = { version = "5.4.5", default-features = false }
+# 0.10 移除了 OsRng，Terracotta 直接依赖 OsRng，保留 0.9 系列
 rand_core = { version = "0.9.3", features = ["os_rng"] }
-rocket = { version = "0.5.1", default-features = false, features = ["json"] }
-serde = "1.0.219"
-serde_json = "1.0.141"
-sevenz-rust2 = { version = "0.18.0", default-features = false, features = [
+rocket = { version = "0.5.2", default-features = false, features = ["json"] }
+serde = "1.0.229"
+serde_json = "1.0.154"
+sevenz-rust2 = { version = "0.24.2", default-features = false, features = [
     "util",
 ] }
-socket2 = "0.6.0"
+socket2 = "0.6.5"
 winapi = { version = "0.3.9", default-features = false, features = ["winbase", "wincon", "handleapi", "processenv", "consoleapi", "sysinfoapi", "tlhelp32", "synchapi", "processthreadsapi", "minwindef"] }
-reqwest = { version = "0.12.22", default-features = false, features = ["charset", "http2", "rustls-tls", "deflate", "blocking"]}
+reqwest = { version = "0.13.5", default-features = false, features = ["charset", "http2", "rustls", "deflate", "blocking"]}
 timestamp = { path = "timestamp" }
 hex = "0.4.3"
 rand_chacha = "0.9.0"
-parking_lot = "0.12.4"
-easytier = { git = "https://github.com/EasyTier/EasyTier.git", branch = "main"}
+parking_lot = "0.13.0"
+# v2.7.0（当前仍是 prerelease）重写了实例管理 API，launcher::NetworkInstance 已移除；
+# 升到 2.7+ 需要把 src/easytier 的对接改到 instance::factory / InstanceManager，故钉在最新稳定版 v2.6.4。
+easytier = { git = "https://github.com/EasyTier/EasyTier.git", tag = "v2.6.4"}
 # These libraries are the necessities to interact with EasyTier. DO NOT upgrade their version.
 uuid = "1"
 toml = "0"
@@ -41,22 +44,23 @@ tokio = "1"
 cidr = { version = "0", features = ["serde"] }
 
 [target.'cfg(target_os = "macos")'.dependencies]
-objc2 = "0.6.1"
-objc2-app-kit = "0.3.1"
-objc2-foundation = "0.3.1"
-objc2-web-kit = "0.3.1"
-native-dialog = "0.9.0"
+objc2 = "0.6.5"
+objc2-app-kit = "0.3.2"
+objc2-foundation = "0.3.2"
+objc2-web-kit = "0.3.2"
+native-dialog = "0.9.7"
 
 [target.'cfg(target_os = "android")'.dependencies]
+# 0.22 的 JNIEnv 接口有破坏性改动，需 Android 工具链验证后再升级
 jni = { version = "0.21.1", features = ["invocation"] }
 
 [build-dependencies]
-winresource = "0.1"
-sevenz-rust2 = { version = "0.18.0", default-features = false, features = [
+winresource = "0.1.34"
+sevenz-rust2 = { version = "0.24.2", default-features = false, features = [
     "compress",
     "util",
 ] }
-toml = "0.9.4"
+toml = "1.1.8"
 
 [lib]
 name = "terracotta"

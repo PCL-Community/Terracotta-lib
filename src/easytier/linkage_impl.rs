@@ -59,7 +59,7 @@ pub fn create_with_config(config: TomlConfigLoader) -> EasyTier {
         }
         return EasyTier(None);
     };
-    
+
     runtime.spawn(async move {
         let mut p_address = None;
         let mut p_proxy_cidrs = vec![];

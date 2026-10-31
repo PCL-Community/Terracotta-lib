@@ -1,7 +1,7 @@
 use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr, UdpSocket};
 use std::sync::mpsc::{self, Receiver, Sender};
-use std::{io, thread};
 use std::time::Duration;
+use std::{io, thread};
 
 pub struct FakeServer {
     pub port: u16,

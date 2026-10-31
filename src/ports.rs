@@ -6,7 +6,7 @@ pub enum PortRequest {
     #[allow(dead_code)]
     EasyTierRPC,
     Scaffolding,
-    Minecraft
+    Minecraft,
 }
 
 impl PortRequest {

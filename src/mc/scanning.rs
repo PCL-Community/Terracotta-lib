@@ -34,7 +34,11 @@ impl MinecraftScanner {
         return MinecraftScanner { _holder: tx, port };
     }
 
-    fn run(signal: Receiver<()>, output: Arc<Mutex<Vec<u16>>>, filter: fn(&str) -> bool) -> Result<()> {
+    fn run(
+        signal: Receiver<()>,
+        output: Arc<Mutex<Vec<u16>>>,
+        filter: fn(&str) -> bool,
+    ) -> Result<()> {
         let sockets: Vec<(Socket, &IpAddr)> = crate::ADDRESSES
             .iter()
             .map(|address| match address {
@@ -62,7 +66,11 @@ impl MinecraftScanner {
             .filter_map(|r: Result<(Socket, &IpAddr)>| r.ok())
             .collect();
 
-        logging!("Server Scanner", "Starting server scanner at IP: {:?}", sockets.iter().map(|p| p.1).collect::<Vec<_>>());
+        logging!(
+            "Server Scanner",
+            "Starting server scanner at IP: {:?}",
+            sockets.iter().map(|p| p.1).collect::<Vec<_>>()
+        );
 
         let mut buf: [MaybeUninit<u8>; _] = [MaybeUninit::uninit(); 8192];
 
@@ -89,7 +97,8 @@ impl MinecraftScanner {
             for (socket, _) in sockets.iter() {
                 if let Ok((length, _)) = socket.recv_from(&mut buf) {
                     // SAFETY: 0..length has been initialized by recv_from.
-                    let buf = unsafe { mem::transmute::<&[MaybeUninit<u8>], &[u8]>(&buf[..length]) };
+                    let buf =
+                        unsafe { mem::transmute::<&[MaybeUninit<u8>], &[u8]>(&buf[..length]) };
 
                     let data: Cow<'_, str> = String::from_utf8_lossy(buf);
                     {
@@ -100,7 +109,8 @@ impl MinecraftScanner {
                             && end - begin >= "[MOTD]".len() + 1
                             && let Some(motd) = data.as_ref().get((begin + "[MOTD]".len())..end)
                             && filter(motd)
-                        {} else {
+                        {
+                        } else {
                             continue;
                         }
                     }

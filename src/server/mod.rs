@@ -15,15 +15,18 @@ fn download_log(fetch: Option<bool>) -> Result<std::fs::File, Status> {
     if cfg!(target_os = "macos") && !fetch {
         use std::process::Command;
 
-        Err(match Command::new("open")
-            .arg((*LOGGING_FILE).parent().unwrap())
-            .spawn() {
-            Ok(_) => Status::NoContent,
-            Err(e) => {
-                logging!("Core", "Cannot open logging file: {:?}", e);
-                Status::InternalServerError
-            }
-        })
+        Err(
+            match Command::new("open")
+                .arg((*LOGGING_FILE).parent().unwrap())
+                .spawn()
+            {
+                Ok(_) => Status::NoContent,
+                Err(e) => {
+                    logging!("Core", "Cannot open logging file: {:?}", e);
+                    Status::InternalServerError
+                }
+            },
+        )
     } else {
         std::fs::File::open((*LOGGING_FILE).clone()).map_err(|e| {
             logging!("Core", "Cannot open logging file: {:?}", e);
