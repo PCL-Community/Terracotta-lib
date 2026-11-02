@@ -6,12 +6,36 @@ use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddrV4, SocketAddrV6};
 use std::str::FromStr;
 use std::sync::mpsc::{self, Receiver, Sender};
 use std::sync::{Arc, Mutex};
-use std::time::{Duration, SystemTime};
+use std::time::{Duration, Instant};
 use std::{mem, thread};
 
 pub struct MinecraftScanner {
     port: Arc<Mutex<Vec<u16>>>,
     _holder: Sender<()>,
+}
+
+fn advertised_port(data: &str, filter: fn(&str) -> bool) -> Option<u16> {
+    let (_, motd) = data.split_once("[MOTD]")?;
+    let (motd, _) = motd.split_once("[/MOTD]")?;
+    if motd.is_empty() || !filter(motd) {
+        return None;
+    }
+    let (_, port) = data.split_once("[AD]")?;
+    let (port, _) = port.split_once("[/AD]")?;
+    port.parse().ok().filter(|port| *port != 0)
+}
+
+fn update_ports(ports: &mut Vec<(u16, Instant)>, port: Option<u16>, now: Instant) -> bool {
+    let old: Vec<_> = ports.iter().map(|(port, _)| *port).collect();
+    ports.retain(|(_, seen)| now.saturating_duration_since(*seen) < Duration::from_secs(5));
+    if let Some(port) = port {
+        if let Some((_, seen)) = ports.iter_mut().find(|(existing, _)| *existing == port) {
+            *seen = now;
+        } else {
+            ports.push((port, now));
+        }
+    }
+    old != ports.iter().map(|(port, _)| *port).collect::<Vec<_>>()
 }
 
 impl MinecraftScanner {
@@ -66,6 +90,10 @@ impl MinecraftScanner {
             .filter_map(|r: Result<(Socket, &IpAddr)>| r.ok())
             .collect();
 
+        if sockets.is_empty() {
+            return Err(std::io::Error::other("no multicast sockets available"));
+        }
+
         logging!(
             "Server Scanner",
             "Starting server scanner at IP: {:?}",
@@ -74,25 +102,14 @@ impl MinecraftScanner {
 
         let mut buf: [MaybeUninit<u8>; _] = [MaybeUninit::uninit(); 8192];
 
-        let mut ports: Vec<(u16, SystemTime)> = vec![];
+        let mut ports: Vec<(u16, Instant)> = vec![];
 
         loop {
-            let mut dirty = false;
-
             if let Err(mpsc::TryRecvError::Disconnected) = signal.try_recv() {
                 return Ok(());
             }
 
-            let now = SystemTime::now();
-            for i in (0..ports.len()).rev() {
-                if match now.duration_since(ports[i].1) {
-                    Ok(value) => value.as_millis() >= 5_000,
-                    Err(_) => false,
-                } {
-                    dirty = true;
-                    ports.remove(i);
-                }
-            }
+            let mut dirty = update_ports(&mut ports, None, Instant::now());
 
             for (socket, _) in sockets.iter() {
                 if let Ok((length, _)) = socket.recv_from(&mut buf) {
@@ -101,67 +118,66 @@ impl MinecraftScanner {
                         unsafe { mem::transmute::<&[MaybeUninit<u8>], &[u8]>(&buf[..length]) };
 
                     let data: Cow<'_, str> = String::from_utf8_lossy(buf);
-                    {
-                        let begin = data.find("[MOTD]");
-                        let end = data.find("[/MOTD]");
-                        if let Some(begin) = begin
-                            && let Some(end) = end
-                            && end - begin >= "[MOTD]".len() + 1
-                            && let Some(motd) = data.as_ref().get((begin + "[MOTD]".len())..end)
-                            && filter(motd)
-                        {
-                        } else {
-                            continue;
-                        }
-                    }
-
-                    {
-                        let begin = data.find("[AD]");
-                        let end = data.find("[/AD]");
-                        if let Some(begin) = begin
-                            && let Some(end) = end
-                            && end - begin >= "[AD]".len() + 1
-                            && let Some(port) = data.as_ref().get((begin + "[AD]".len())..end)
-                            && let Ok(port) = port.parse::<u16>()
-                        {
-                            let mut existed = false;
-                            for i in 0..ports.len() {
-                                if ports[i].0 == port {
-                                    existed = true;
-                                    ports.remove(i);
-                                    break;
-                                }
-                            }
-
-                            ports.push((port, SystemTime::now()));
-                            if !existed {
-                                dirty = true;
-                            }
-                            break;
-                        }
+                    if let Some(port) = advertised_port(&data, filter) {
+                        dirty |= update_ports(&mut ports, Some(port), Instant::now());
+                        break;
                     }
                 }
             }
 
             if dirty {
                 let mut output = output.lock().unwrap();
-                output.clear();
-
-                let mut message = String::from("Updating server list to [");
-                for i in 0..ports.len() {
-                    output.push(ports[0].0);
-                    message += &ports[0].0.to_string();
-                    if i != ports.len() - 1 {
-                        message.push_str(", ");
-                    }
-                }
-                message.push(']');
-                logging!("Server Scanner", "{}", message);
+                *output = ports.iter().map(|(port, _)| *port).collect();
+                logging!("Server Scanner", "Updating server list to {:?}", *output);
             }
         }
     }
 
     pub fn get_ports(&self) -> Vec<u16> {
         return self.port.lock().unwrap().clone();
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn rejects_invalid_or_filtered_advertisements() {
+        let filter = |motd: &str| motd != "self";
+        assert_eq!(
+            advertised_port("[MOTD]world[/MOTD][AD]25565[/AD]", filter),
+            Some(25565)
+        );
+        for data in [
+            "[/MOTD][MOTD]world[AD]1[/AD]",
+            "[MOTD]world[/MOTD][/AD][AD]1",
+            "[MOTD]self[/MOTD][AD]1[/AD]",
+            "[MOTD]world[/MOTD][AD]0[/AD]",
+            "[MOTD]world[/MOTD][AD]65536[/AD]",
+        ] {
+            assert_eq!(advertised_port(data, filter), None, "{data}");
+        }
+    }
+
+    #[test]
+    fn tracks_multiple_ports_refresh_and_expiration() {
+        let now = Instant::now();
+        let mut ports = Vec::new();
+        assert!(update_ports(&mut ports, Some(1000), now));
+        assert!(update_ports(&mut ports, Some(2000), now));
+        assert_eq!(
+            ports.iter().map(|p| p.0).collect::<Vec<_>>(),
+            vec![1000, 2000]
+        );
+        assert!(!update_ports(
+            &mut ports,
+            Some(1000),
+            now + Duration::from_secs(3)
+        ));
+        assert!(update_ports(&mut ports, None, now + Duration::from_secs(5)));
+        assert_eq!(ports.iter().map(|p| p.0).collect::<Vec<_>>(), vec![1000]);
+        assert!(update_ports(&mut ports, None, now + Duration::from_secs(8)));
+        assert!(ports.is_empty());
     }
 }
