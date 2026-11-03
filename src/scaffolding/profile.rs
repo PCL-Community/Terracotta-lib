@@ -28,7 +28,7 @@ fn get_machine_id() -> &'static str {
                     length
                 );
                 OsRng.try_fill_bytes(&mut bytes[0..16]).unwrap();
-                if let Ok(_) = file.seek(SeekFrom::Start(0)) {
+                if file.seek(SeekFrom::Start(0)).is_ok() {
                     let _ = file.write(&bytes[0..16]);
                 }
             }
@@ -42,10 +42,12 @@ fn get_machine_id() -> &'static str {
 
     let mut bytes = [0u8; 17];
     OsRng.try_fill_bytes(&mut bytes).unwrap();
-    return hex::encode(&bytes).leak();
+    hex::encode(bytes).leak()
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Serialize)]
+// 这三个名字会原样进入序列化结果，改成驼峰会改变已有的配置/通信格式。
+#[allow(clippy::upper_case_acronyms)]
 pub enum ProfileKind {
     HOST,
     LOCAL,

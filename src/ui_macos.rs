@@ -82,7 +82,7 @@ pub fn open(url: String) {
                     let title = webview.title();
                     if let Some(title) = title
                         && objc2::rc::autoreleasepool(|pool| {
-                            return NSString::to_str(&title, pool).contains("Terracotta");
+                            NSString::to_str(&title, pool).contains("Terracotta")
                         })
                     {
                         std::thread::sleep(std::time::Duration::from_millis(200));

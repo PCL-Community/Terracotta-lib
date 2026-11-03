@@ -13,7 +13,7 @@ macro_rules! logging {
     ($prefix:expr, $($arg:tt)*) => {
         cfg_if::cfg_if! {
             if #[cfg(target_family = "windows")] {
-                crate::logging_windows::logging($prefix, std::format_args!($($arg)*));
+                $crate::logging_windows::logging($prefix, std::format_args!($($arg)*));
             } else {
                 std::println!("[{}]: {}", $prefix, std::format_args!($($arg)*));
             }
@@ -50,7 +50,7 @@ pub mod logging_windows;
 #[cfg(target_os = "macos")]
 pub mod ui_macos;
 
-pub const MOTD: &'static str = "§6§l双击进入陶瓦联机大厅（请保持陶瓦运行）";
+pub const MOTD: &str = "§6§l双击进入陶瓦联机大厅（请保持陶瓦运行）";
 
 #[cfg(target_family = "windows")]
 pub mod lock_windows;
@@ -135,7 +135,7 @@ enum Mode {
     General,
     #[cfg(target_os = "macos")]
     Daemon,
-    HMCL {
+    Hmcl {
         file: String,
     },
 }
@@ -245,7 +245,7 @@ async fn main() {
                         }
                         panic!("Delegate process hasn't started in 8 seconds.");
                     } else {
-                        main_general(Mode::HMCL {
+                        main_general(Mode::Hmcl {
                             file: arguments[1].clone(),
                         })
                         .await
@@ -254,7 +254,7 @@ async fn main() {
             }
             #[cfg(target_family = "windows")]
             "--hmcl2" => {
-                main_general(Mode::HMCL {
+                main_general(Mode::Hmcl {
                     file: arguments[1].clone(),
                 })
                 .await
@@ -290,7 +290,7 @@ cfg_if::cfg_if! {
             where
                 E: Into<Box<dyn std::error::Error + Send + Sync>>
             {
-                return Some(std::io::Error::new(std::io::ErrorKind::TimedOut, error));
+                Some(std::io::Error::new(std::io::ErrorKind::TimedOut, error))
             }
 
             let state = Lock::get_state();
@@ -335,7 +335,7 @@ cfg_if::cfg_if! {
                 }
             };
 
-            if let None = error {
+            if error.is_none() {
                 thread::sleep(Duration::from_millis(5000));
 
                 let state = Lock::get_state();
@@ -359,7 +359,6 @@ cfg_if::cfg_if! {
                 } else {
                     logging!("UI", "Failed to start daemon: {}", error);
                 }
-                return;
             }
         }
     } else {
@@ -397,7 +396,7 @@ async fn main_single(state: Option<Lock>, mode: Mode) {
     #[cfg(target_os = "macos")]
     assert!(matches!(mode, Mode::Daemon));
 
-    redirect_std(&*LOGGING_FILE);
+    redirect_std(&LOGGING_FILE);
 
     let (port_callback, port_receiver) = mpsc::channel::<u16>();
     let port_callback2 = port_callback.clone();
@@ -435,7 +434,7 @@ async fn main_single(state: Option<Lock>, mode: Mode) {
                 Mode::General => {
                     let _ = open::that(format!("http://127.0.0.1:{}/", port));
                 }
-                Mode::HMCL { file } => output_port(port, file),
+                Mode::Hmcl { file } => output_port(port, file),
             }
         }
     });
@@ -467,8 +466,8 @@ async fn main_secondary(port: u16, mode: Mode) {
             }
         }
         #[cfg(target_os = "macos")]
-        Mode::Daemon => assert!(false),
-        Mode::HMCL { file } => output_port(port, file),
+        Mode::Daemon => unreachable!("daemon 模式由 macOS UI 外壳单独处理，不会走到这里"),
+        Mode::Hmcl { file } => output_port(port, file),
     }
 }
 
@@ -523,7 +522,7 @@ fn output_port(port: u16, file: String) {
     fs::rename(format!("{}.tmp", file), file).unwrap();
 }
 
-fn redirect_std(file: &'static std::path::PathBuf) {
+fn redirect_std(file: &'static std::path::Path) {
     if cfg!(debug_assertions) {
         return;
     }
@@ -532,13 +531,11 @@ fn redirect_std(file: &'static std::path::PathBuf) {
         return;
     };
 
-    if !fs::metadata(parent).is_ok() {
-        if !fs::create_dir_all(parent).is_ok() {
-            return;
-        }
+    if !fs::metadata(parent).is_ok() && !fs::create_dir_all(parent).is_ok() {
+        return;
     }
 
-    let Ok(logging_file) = fs::File::create(file.clone()) else {
+    let Ok(logging_file) = fs::File::create(file) else {
         return;
     };
 

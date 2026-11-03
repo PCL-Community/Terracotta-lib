@@ -227,7 +227,7 @@ impl Room {
         let hostname = generate_hostname(scaffolding_port);
         let ipv4 = std::net::Ipv4Addr::new(10, 144, 144, 1);
         // 创建 EasyTier 配置
-        let network_config = self.compute_arguments_common_config(&public_servers);
+        let network_config = self.compute_arguments_common_config(public_servers);
         network_config.set_hostname(Some(hostname));
         network_config.set_ipv4(Some(ipv4.into()));
         network_config.set_tcp_whitelist(vec![scaffolding_port.to_string(), port.to_string()]);
@@ -575,7 +575,6 @@ impl Room {
                     kind: ExceptionType::GuestEasytierCrash,
                 });
                 return;
-            } else {
             }
 
             local_port

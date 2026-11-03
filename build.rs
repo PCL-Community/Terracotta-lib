@@ -1,4 +1,3 @@
-use sevenz_rust2;
 use std::{env, path::Path};
 
 fn main() {
@@ -44,11 +43,11 @@ fn main() {
         {
             let current = Path::new(&get_var("CARGO_MANIFEST_DIR").unwrap()).to_owned();
 
-            if let Ok(windres) = get_var(&format!("CARGO_TARGET_{}_WINDRES_PATH", desc)) {
+            if let Ok(windres) = get_var(format!("CARGO_TARGET_{}_WINDRES_PATH", desc)) {
                 let windres = current.join(windres);
                 compiler.set_windres_path(windres.to_str().unwrap());
             }
-            if let Ok(ar) = get_var(&format!("CARGO_TARGET_{}_AR", desc)) {
+            if let Ok(ar) = get_var(format!("CARGO_TARGET_{}_AR", desc)) {
                 let ar = current.join(ar);
                 compiler.set_ar_path(ar.to_str().unwrap());
             }

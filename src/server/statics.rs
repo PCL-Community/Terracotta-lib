@@ -17,7 +17,7 @@ struct Storage {
 
 impl AsRef<[u8]> for MemoryFile {
     fn as_ref(&self) -> &[u8] {
-        return self.0.as_ref().data.as_ref();
+        self.0.as_ref().data.as_ref()
     }
 }
 
@@ -67,33 +67,34 @@ fn static_files(path: PathBuf) -> Result<MemoryFile, Status> {
                 data: buffer.into_boxed_slice(),
             }));
 
-            return Ok(true);
+            Ok(true)
         });
 
         pages.shrink_to_fit();
-        return pages;
+        pages
     }
 
     use std::sync::mpsc::{self, Sender};
+    type MainPage = RwLock<Option<(Sender<()>, Vec<Arc<Storage>>)>>;
     lazy_static::lazy_static! {
-        static ref MAIN_PAGE: RwLock<Option<(Sender<()>, Vec<Arc<Storage>>)>> = RwLock::new(None);
+        static ref MAIN_PAGE: MainPage = RwLock::new(None);
     }
 
-    fn respond(mut path: PathBuf, storages: &Vec<Arc<Storage>>) -> Result<MemoryFile, Status> {
+    fn respond(mut path: PathBuf, storages: &[Arc<Storage>]) -> Result<MemoryFile, Status> {
         if path.as_os_str().is_empty() {
             path = PathBuf::from("_.html");
         }
-        return match storages.iter().find(|storage| path == storage.path) {
+        match storages.iter().find(|storage| path == storage.path) {
             Some(storage) => Ok(MemoryFile(storage.clone())),
             None => Err(Status { code: 404 }),
-        };
+        }
     }
 
     let lock = MAIN_PAGE.read().unwrap();
     match lock.as_ref() {
         Some((sender, storages)) => {
             let _ = sender.send(());
-            return respond(path, storages);
+            respond(path, storages)
         }
         None => {
             drop(lock);
@@ -102,7 +103,7 @@ fn static_files(path: PathBuf) -> Result<MemoryFile, Status> {
             match lock.as_ref() {
                 Some((sender, storages)) => {
                     let _ = sender.send(());
-                    return respond(path, storages);
+                    respond(path, storages)
                 }
                 None => {
                     let pages = compute_static_pages();
@@ -111,7 +112,7 @@ fn static_files(path: PathBuf) -> Result<MemoryFile, Status> {
                     let (sender, receiver) = mpsc::channel();
                     thread::spawn(move || {
                         loop {
-                            if let Err(_) = receiver.recv_timeout(Duration::from_secs(60)) {
+                            if receiver.recv_timeout(Duration::from_secs(60)).is_err() {
                                 let mut lock = MAIN_PAGE.write().unwrap();
                                 logging!(
                                     "UI",
@@ -124,7 +125,7 @@ fn static_files(path: PathBuf) -> Result<MemoryFile, Status> {
                     });
 
                     *lock = Some((sender, pages));
-                    return respond;
+                    respond
                 }
             }
         }

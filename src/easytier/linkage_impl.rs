@@ -88,23 +88,23 @@ pub fn create_with_config(config: TomlConfigLoader) -> EasyTier {
                 .flat_map(|route| route.proxy_cidrs)
                 .collect::<Vec<_>>();
 
-            if p_address != address || p_proxy_cidrs != proxy_cidrs {
-                if let Some((_address, _network_length)) = address {
-                    #[cfg(target_os = "android")]
-                    crate::on_vpnservice_change(EasyTierTunRequest {
-                        address: _address,
-                        network_length: _network_length,
-                        cidrs: proxy_cidrs.clone(),
-                        dest: _tun_fd.clone(),
-                    });
-                    #[cfg(not(target_os = "android"))]
-                    {
-                        // 在非 Android 平台上，不需要处理 VPN 服务变更
-                        logging!(
-                            "EasyTier",
-                            "VPN service change not handled on non-Android platform"
-                        );
-                    }
+            if (p_address != address || p_proxy_cidrs != proxy_cidrs)
+                && let Some((_address, _network_length)) = address
+            {
+                #[cfg(target_os = "android")]
+                crate::on_vpnservice_change(EasyTierTunRequest {
+                    address: _address,
+                    network_length: _network_length,
+                    cidrs: proxy_cidrs.clone(),
+                    dest: _tun_fd.clone(),
+                });
+                #[cfg(not(target_os = "android"))]
+                {
+                    // 在非 Android 平台上，不需要处理 VPN 服务变更
+                    logging!(
+                        "EasyTier",
+                        "VPN service change not handled on non-Android platform"
+                    );
                 }
             }
 
@@ -150,7 +150,7 @@ impl EasyTier {
                             .ok()
                             .and_then(|info| info.node_info);
 
-                        first.and_then(|first| second.map(|second| (first, second)))
+                        first.zip(second)
                     })
                 },
             )
@@ -238,7 +238,7 @@ impl EasyTier {
                 }
             };
         }
-        return false;
+        false
     }
 }
 

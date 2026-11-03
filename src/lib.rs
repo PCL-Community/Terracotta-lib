@@ -5,7 +5,7 @@ macro_rules! logging {
     ($prefix:expr, $($arg:tt)*) => {
         cfg_if::cfg_if! {
             if #[cfg(target_os = "android")] {
-                crate::logging_android(std::format!("[{}]: {}", $prefix, std::format_args!($($arg)*)));
+                $crate::logging_android(std::format!("[{}]: {}", $prefix, std::format_args!($($arg)*)));
             } else {
                 std::println!("[{}]: {}", $prefix, std::format_args!($($arg)*));
             }
@@ -67,7 +67,7 @@ use {
 pub mod controller;
 mod easytier;
 mod scaffolding;
-pub const MOTD: &'static str = "§6§l双击进入陶瓦联机大厅（请保持陶瓦运行）";
+pub const MOTD: &str = "§6§l双击进入陶瓦联机大厅（请保持陶瓦运行）";
 
 mod mc;
 mod once_cell;

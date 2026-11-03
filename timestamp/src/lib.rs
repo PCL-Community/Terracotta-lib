@@ -11,5 +11,5 @@ pub fn compile_time(_: TokenStream) -> TokenStream {
             .as_millis();
     }
 
-    return format!("({}u128)", *TIMESTAMP).parse().unwrap();
+    format!("({}u128)", *TIMESTAMP).parse().unwrap()
 }

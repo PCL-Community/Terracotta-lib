@@ -47,7 +47,7 @@ fn panic(peaceful: Option<bool>) {
 
 #[get("/meta")]
 fn get_meta() -> Json<Value> {
-    return Json(json!({
+    Json(json!({
         "version": env!("TERRACOTTA_VERSION"),
         "compile_timestamp": timestamp::compile_time!().to_string(),
         "easytier_version": env!("TERRACOTTA_ET_VERSION"),
@@ -65,7 +65,7 @@ fn get_meta() -> Json<Value> {
         "target_vendor": env!("CARGO_CFG_TARGET_VENDOR"),
         "target_os": env!("CARGO_CFG_TARGET_OS"),
         "target_env": env!("CARGO_CFG_TARGET_ENV"),
-    }));
+    }))
 }
 
 #[get("/.well-known/appspecific/com.chrome.devtools.json")]

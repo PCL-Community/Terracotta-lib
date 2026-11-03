@@ -150,6 +150,8 @@ impl AppStateContainer {
         self
     }
 
+    /// 名字与 `AsRef` 撞车，但这里是容器内部状态访问，不实现 trait 以免语义混淆。
+    #[allow(clippy::should_implement_trait)]
     pub fn as_ref(&self) -> &AppState {
         &self.state.value
     }

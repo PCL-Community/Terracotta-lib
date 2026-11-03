@@ -176,7 +176,7 @@ pub fn set_host_starting(mc_port: u16, player: Option<String>) -> Option<String>
 pub fn set_guesting(room: Room, player: Option<String>, public_nodes: Vec<String>) -> bool {
     let capture = {
         let state = AppState::acquire();
-        if !matches!(state.as_ref(), AppState::Waiting { .. }) {
+        if !matches!(state.as_ref(), AppState::Waiting) {
             return false;
         }
         state.set(AppState::GuestConnecting { room: room.clone() })

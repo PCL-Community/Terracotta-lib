@@ -25,7 +25,7 @@ fn flock(file: &fs::File, operation: i32) -> io::Result<()> {
         }
     }
 
-    return Ok(());
+    Ok(())
 }
 
 impl State {
@@ -34,13 +34,15 @@ impl State {
             .read(true)
             .write(true)
             .create(true)
+            // 锁文件的内容由 set_len(0) 手动清空，这里不要隐式截断。
+            .truncate(false)
             .open((*LOCK).clone())
             .unwrap();
 
         if flock(&file, LOCK_EX | LOCK_NB).is_ok() {
             file.set_len(0).unwrap();
 
-            return State::Single { file: file };
+            State::Single { file }
         } else {
             let _ = flock(&file, LOCK_SH);
 
@@ -55,10 +57,10 @@ impl State {
                     port
                 );
 
-                return State::Secondary { port: port };
+                State::Secondary { port }
             } else {
                 logging!("Lock", "Global mutex is broken.");
-                return State::Unknown;
+                State::Unknown
             }
         }
     }

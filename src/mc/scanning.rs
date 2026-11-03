@@ -55,7 +55,7 @@ impl MinecraftScanner {
             }
         });
 
-        return MinecraftScanner { _holder: tx, port };
+        MinecraftScanner { _holder: tx, port }
     }
 
     fn run(
