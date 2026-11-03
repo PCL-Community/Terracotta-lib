@@ -49,12 +49,12 @@ Log.i("Terracotta", "version=" + metadata.getTerracottaVersion()
 
 ### 切换状态
 
-| 方法 | 说明 |
-| --- | --- |
-| `setWaiting()` | 重置为待机状态，用于「返回主页」等操作。 |
+| 方法                                                          | 说明                                                                                                                                                              |
+| ------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `setWaiting()`                                                | 重置为待机状态，用于「返回主页」等操作。                                                                                                                          |
 | `setScanning(@Nullable String room, @Nullable String player)` | 以房主身份开房。`room` 传入已有邀请码可复用原房间，传 `null` 则新建；`player` 为房主显示名，传 `null` 使用默认值。仅在当前为 `waiting` 状态时生效，否则静默忽略。 |
-| `setGuesting(String room, @Nullable String player)` | 以加入方身份加入房间。`room` 不可为空；邀请码格式错误、或当前不在 `waiting` 状态时返回 `false`，成功受理返回 `true`。 |
-| `parseRoomCode(String room)` | 仅解析邀请码，不切换状态。返回 `RoomType.TERRACOTTA_LEGACY` / `PCL2CE` / `SCAFFOLDING`；格式无效返回 `null`。 |
+| `setGuesting(String room, @Nullable String player)`           | 以加入方身份加入房间。`room` 不可为空；邀请码格式错误、或当前不在 `waiting` 状态时返回 `false`，成功受理返回 `true`。                                             |
+| `parseRoomCode(String room)`                                  | 仅解析邀请码，不切换状态。返回 `RoomType.TERRACOTTA_LEGACY` / `PCL2CE` / `SCAFFOLDING`；格式无效返回 `null`。                                                     |
 
 除 `parseRoomCode` 外，以上方法都要求在 `initialize` 成功之后调用，否则抛出 `IllegalStateException`。
 

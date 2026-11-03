@@ -76,28 +76,28 @@ scaffolding-mc-server-{port: uint16}。
 该协议建立于 TCP 协议之上，地址为联机中心的虚拟 IP 地址，端口为联机中心的 port 参数。
 联机中心将在该接口开放 TCP服务器，接受符合如下标准的请求（大端序）：
 
-| 代号     | 偏移量        | 类型     | 解释                                                       |
-|--------|------------|--------|----------------------------------------------------------|
-| 请求类型长度 | 0          | uint8  | 字段【请求类型】的字节长度                                            |
-| 请求类型   | 1          | byte[] | 请求类型，应符合 {namespace: ascii string}:{value: ascii string} |
-| 请求体长度  | 1 + 请求类型长度 | uint32 | 字段【请求体】的字节长度                                             |
-| 请求体    | 5 + 请求类型长度 | /      | 请求体，视协议而定                                                |
+| 代号         | 偏移量           | 类型   | 解释                                                             |
+| ------------ | ---------------- | ------ | ---------------------------------------------------------------- |
+| 请求类型长度 | 0                | uint8  | 字段【请求类型】的字节长度                                       |
+| 请求类型     | 1                | byte[] | 请求类型，应符合 {namespace: ascii string}:{value: ascii string} |
+| 请求体长度   | 1 + 请求类型长度 | uint32 | 字段【请求体】的字节长度                                         |
+| 请求体       | 5 + 请求类型长度 | /      | 请求体，视协议而定                                               |
 
 其中，namespace 和 value 都应当是仅包含小写字母、下划线、数字的ASCII字符串。
 联机中心应返回如下标准的请求：
 
-| 代号    | 偏移量 | 类型     | 解释                  |
-|-------|-----|--------|---------------------|
-| 状态    | 0   | uint8  | 响应状态                |
-| 响应体长度 | 1   | uint32 | 字段【响应体】的字节长度（可能为 0） |
-| 响应体   | 5   | /      | 响应体（可能为空）           |
+| 代号       | 偏移量 | 类型   | 解释                                 |
+| ---------- | ------ | ------ | ------------------------------------ |
+| 状态       | 0      | uint8  | 响应状态                             |
+| 响应体长度 | 1      | uint32 | 字段【响应体】的字节长度（可能为 0） |
+| 响应体     | 5      | /      | 响应体（可能为空）                   |
 
 如果处理请求成功，状态应为 0，响应体将视协议而定；如果请求失败，则应返回以下状态：
 
-| 状态       | 错误类型    | 响应体            | 响应体格式   |
-|----------|---------|----------------|---------|
-| [32, 64) | 协议定义的错误 | 若未由协议明确指出，默认为空 | /       |
-| 255      | 未知错误    | 错误详细内容         | UTF8字符串 |
+| 状态     | 错误类型       | 响应体                       | 响应体格式 |
+| -------- | -------------- | ---------------------------- | ---------- |
+| [32, 64) | 协议定义的错误 | 若未由协议明确指出，默认为空 | /          |
+| 255      | 未知错误       | 错误详细内容                 | UTF8字符串 |
 
 #### 标准协议
 
@@ -138,7 +138,7 @@ scaffolding-mc-server-{port: uint16}。
 - 响应体：Minecraft服务器的在联机中心上的端口；
 - 响应体格式：大端序编码的 2 字节 u16 数据，FF FF。
 - 错误状态：
-    * 32：服务器未启动
+  - 32：服务器未启动
 
 ##### 玩家
 
@@ -146,8 +146,8 @@ scaffolding-mc-server-{port: uint16}。
 
 - 请求体：玩家 ID、设备 machine_id 和 EasyTier Node ID
 - 请求体格式（JSON）：
-- * 联机客户端执行了协议协商且双端支持 `c:player_easytier_id` 协议：{ name: string, machine_id: string, easytier_id: string, vendor: string }
-  * 否则：{ name: string, machine_id: string, vendor: string }
+- - 联机客户端执行了协议协商且双端支持 `c:player_easytier_id` 协议：{ name: string, machine_id: string, easytier_id: string, vendor: string }
+  - 否则：{ name: string, machine_id: string, vendor: string }
 - 响应体：空
 
 > 联机中心应使用 machine_id 来作为所有节点的唯一标识符。
@@ -159,8 +159,8 @@ scaffolding-mc-server-{port: uint16}。
 - 请求体：空
 - 响应体：玩家列表（包括房主）
 - 响应体格式（JSON）：
-- * 联机客户端执行了协议协商且双端支持 `c:player_easytier_id` 协议：\[{ name: string, machine_id: string, easytier_id: string, vendor: string, kind: 'HOST' | 'GUEST' }\]
-  * 否则：\[{ name: string, machine_id: string, vendor: string, kind: 'HOST' | 'GUEST' }\]
+- - 联机客户端执行了协议协商且双端支持 `c:player_easytier_id` 协议：\[{ name: string, machine_id: string, easytier_id: string, vendor: string, kind: 'HOST' | 'GUEST' }\]
+  - 否则：\[{ name: string, machine_id: string, vendor: string, kind: 'HOST' | 'GUEST' }\]
 
 > 联机中心应使用 machine_id 来作为所有节点的唯一标识符。
 

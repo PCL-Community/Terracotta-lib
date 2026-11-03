@@ -72,15 +72,20 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - { os: linux,   arch: x86_64,      target: x86_64-unknown-linux-musl }
-          - { os: linux,   arch: arm64,       target: aarch64-unknown-linux-musl,  runs-on: ubuntu-24.04-arm }
-          - { os: linux,   arch: riscv64,     target: riscv64gc-unknown-linux-gnu, glibc-version: 2.27 }
-          - { os: linux,   arch: loongarch64, target: loongarch64-unknown-linux-gnu }
-          - { os: freebsd, arch: x86_64,      target: x86_64-unknown-freebsd }
-          - { os: android, arch: armv7      , target: armv7-linux-androideabi }
-          - { os: android, arch: arm64v8a,    target: aarch64-linux-android }
-          - { os: android, arch: x86,         target: i686-linux-android }
-          - { os: android, arch: x86_64,      target: x86_64-linux-android }
+          - { os: linux, arch: x86_64, target: x86_64-unknown-linux-musl }
+          - {
+              os: linux,
+              arch: arm64,
+              target: aarch64-unknown-linux-musl,
+              runs-on: ubuntu-24.04-arm,
+            }
+          - { os: linux, arch: riscv64, target: riscv64gc-unknown-linux-gnu, glibc-version: 2.27 }
+          - { os: linux, arch: loongarch64, target: loongarch64-unknown-linux-gnu }
+          - { os: freebsd, arch: x86_64, target: x86_64-unknown-freebsd }
+          - { os: android, arch: armv7, target: armv7-linux-androideabi }
+          - { os: android, arch: arm64v8a, target: aarch64-linux-android }
+          - { os: android, arch: x86, target: i686-linux-android }
+          - { os: android, arch: x86_64, target: x86_64-linux-android }
     runs-on: ${{ matrix.runs-on || 'ubuntu-24.04' }}
     name: Build (${{ matrix.target }})
     steps:
@@ -154,7 +159,7 @@ jobs:
         run: |
           export PATH="$PATH:$ANDROID_NDK_HOME/toolchains/llvm/prebuilt/linux-x86_64/bin"
           export NDK_HOME="$ANDROID_NDK_HOME"
-          
+
           rustup target add --toolchain nightly "${{ matrix.target }}"
           rustup component add rust-src --toolchain "nightly-$(rustc --print host-tuple)"
           cargo +nightly ndk build --release --lib --target "${{ matrix.target }}" \
@@ -171,7 +176,7 @@ jobs:
             source="terracotta-${TERRACOTTA_VERSION}-${{ matrix.os }}-${{ matrix.arch }}"
             cp "target/${{ matrix.target }}/release/terracotta-exe" "$source"
           fi
-          
+
           chmod 755 "$source"
           tar -czf "$source.tar.gz" "$source"
           echo "ARTIFACT=$source.tar.gz" >> "$GITHUB_ENV"
@@ -218,7 +223,7 @@ jobs:
       - name: Prepare Artifact
         run: |
           source="terracotta-${TERRACOTTA_VERSION}-${{ matrix.os }}-${{ matrix.arch }}"
-          
+
           cp "target/${{ matrix.target }}/release/terracotta-exe" "$source"
           chmod 755 "$source"
           tar -czf "$source.tar.gz" "$source"
@@ -264,15 +269,15 @@ jobs:
             fi
           done
           rm -r artifacts
-          
+
           chmod 755 ./terracotta-${TERRACOTTA_VERSION}-*
 
           7z -m0=LZMA2 -mx=9 -ms=on a terracotta-${TERRACOTTA_VERSION}-all.7z terracotta-${TERRACOTTA_VERSION}-*
           echo "ARTIFACT=terracotta-${TERRACOTTA_VERSION}-all.7z" >> $GITHUB_ENV
-          
+
           if [ ! -z "${{ github.event.inputs.version }}" ]; then
             mkdir -p bundle
-          
+
             curl -L -o VCRUNTIME140.DLL "https://github.com/burningtnt/Terracotta/raw/refs/heads/binaries/windows_x86_64/vcruntime140.dll"
             tar -czvf bundle/terracotta-${TERRACOTTA_VERSION}-windows-x86_64-pkg.tar.gz terracotta-${TERRACOTTA_VERSION}-windows-x86_64.exe VCRUNTIME140.DLL
             curl -L -o VCRUNTIME140.DLL "https://github.com/burningtnt/Terracotta/raw/refs/heads/binaries/windows_arm64/vcruntime140.dll"
@@ -282,15 +287,15 @@ jobs:
             tar -czvf bundle/terracotta-${TERRACOTTA_VERSION}-linux-riscv64-pkg.tar.gz terracotta-${TERRACOTTA_VERSION}-linux-riscv64
             tar -czvf bundle/terracotta-${TERRACOTTA_VERSION}-linux-loongarch64-pkg.tar.gz terracotta-${TERRACOTTA_VERSION}-linux-loongarch64
             tar -czvf bundle/terracotta-${TERRACOTTA_VERSION}-freebsd-x86_64-pkg.tar.gz terracotta-${TERRACOTTA_VERSION}-freebsd-x86_64
-          
+
             tar -czvf bundle/terracotta-${TERRACOTTA_VERSION}-macos-x86_64-pkg.tar.gz terracotta-${TERRACOTTA_VERSION}-macos-x86_64
             tar -czvf bundle/terracotta-${TERRACOTTA_VERSION}-macos-arm64-pkg.tar.gz terracotta-${TERRACOTTA_VERSION}-macos-arm64
-          
+
             cp terracotta-${TERRACOTTA_VERSION}-android-armv7.so bundle/terracotta-${TERRACOTTA_VERSION}-android-armv7.so
             cp terracotta-${TERRACOTTA_VERSION}-android-arm64v8a.so bundle/terracotta-${TERRACOTTA_VERSION}-android-arm64v8a.so
             cp terracotta-${TERRACOTTA_VERSION}-android-x86.so bundle/terracotta-${TERRACOTTA_VERSION}-android-x86.so
             cp terracotta-${TERRACOTTA_VERSION}-android-x86_64.so bundle/terracotta-${TERRACOTTA_VERSION}-android-x86_64.so
-          
+
             gh release create v"${{ github.event.inputs.version }}" -R "${{ github.repository }}" --draft --generate-notes bundle/terracotta-${TERRACOTTA_VERSION}-*
           fi
         env:

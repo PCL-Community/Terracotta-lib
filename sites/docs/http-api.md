@@ -12,10 +12,10 @@ Terracotta 内嵌了一个 HTTP 服务，同时托管 Web 控制界面与控制 
 
 ### 端口发现
 
-| 方式 | 说明 |
-| --- | --- |
+| 方式                     | 说明                                                                                                                                                                                                                                                                                                                              |
+| ------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `--hmcl <file>` 启动参数 | 以集成模式启动：`terracotta --hmcl <file>`。HTTP 服务就绪后，端口会以 JSON `{"port": <端口>}` 的形式写入 `<file>`——实际先落盘 `<file>.tmp`、再改名为 `<file>`，保证读取方任意时刻拿到的都是完整内容。Windows 下 `--hmcl` 进程仅作为引导：fork 出子进程作为真正的工作进程，主进程则等待 `<file>` 出现，最长 8 秒，超时即报错退出。 |
-| 锁文件 `terracotta.lock` | 位于数据目录：macOS 为 `~/terracotta/`，其他平台为系统临时目录下的 `terracotta/`（如 Windows 的 `%TEMP%\terracotta`、Linux 的 `/tmp/terracotta`）。内容为 2 字节大端端口号。若已有实例在运行，新进程会作为「附属进程」直接复用该端口。 |
+| 锁文件 `terracotta.lock` | 位于数据目录：macOS 为 `~/terracotta/`，其他平台为系统临时目录下的 `terracotta/`（如 Windows 的 `%TEMP%\terracotta`、Linux 的 `/tmp/terracotta`）。内容为 2 字节大端端口号。若已有实例在运行，新进程会作为「附属进程」直接复用该端口。                                                                                            |
 
 ## API 一览
 
@@ -39,13 +39,13 @@ Terracotta 内嵌了一个 HTTP 服务，同时托管 Web 控制界面与控制 
 }
 ```
 
-| 字段 | 说明 |
-| --- | --- |
-| `version` | Terracotta 版本号 |
-| `compile_timestamp` | 编译时间戳（毫秒，字符串形式的十进制数字） |
-| `easytier_version` | 内置 EasyTier 版本 |
-| `yggdrasil_port` | 本地脚手架服务端口（TCP 私有协议），普通集成无需使用 |
-| `target_tuple` 及其余字段 | 编译目标平台信息，格式为 `架构-供应商-系统-环境` |
+| 字段                      | 说明                                                 |
+| ------------------------- | ---------------------------------------------------- |
+| `version`                 | Terracotta 版本号                                    |
+| `compile_timestamp`       | 编译时间戳（毫秒，字符串形式的十进制数字）           |
+| `easytier_version`        | 内置 EasyTier 版本                                   |
+| `yggdrasil_port`          | 本地脚手架服务端口（TCP 私有协议），普通集成无需使用 |
+| `target_tuple` 及其余字段 | 编译目标平台信息，格式为 `架构-供应商-系统-环境`     |
 
 ### 状态机：GET /state
 
@@ -83,7 +83,7 @@ Terracotta 内嵌了一个 HTTP 服务，同时托管 Web 控制界面与控制 
   "index": 4,
   "room": "U/XXXX-XXXX-XXXX-XXXX",
   "profile_index": 0,
-  "profiles": [ { "machine_id": "...", "name": "...", "vendor": "...", "kind": "HOST" } ]
+  "profiles": [{ "machine_id": "...", "name": "...", "vendor": "...", "kind": "HOST" }]
 }
 ```
 
@@ -109,7 +109,7 @@ Terracotta 内嵌了一个 HTTP 服务，同时托管 Web 控制界面与控制 
   "index": 7,
   "url": "127.0.0.1",
   "profile_index": 0,
-  "profiles": [ { "machine_id": "...", "name": "...", "vendor": "...", "kind": "LOCAL" } ]
+  "profiles": [{ "machine_id": "...", "name": "...", "vendor": "...", "kind": "LOCAL" }]
 }
 ```
 
@@ -123,14 +123,14 @@ Terracotta 内嵌了一个 HTTP 服务，同时托管 Web 控制界面与控制 
 { "state": "exception", "index": 8, "type": 0 }
 ```
 
-| `type` | 含义 |
-| :-: | --- |
-| 0 | 无法连接房主（房间已关闭或网络不稳定） |
-| 1 | 与房主的连接中断 |
-| 2 | 加入方 EasyTier 崩溃 |
-| 3 | 房主 EasyTier 崩溃 |
-| 4 | 房主端 Minecraft 服务器失联（房主退出存档，房间自动关闭） |
-| 5 | 脚手架协议错误（请向开发者反馈） |
+| `type` | 含义                                                      |
+| :----: | --------------------------------------------------------- |
+|   0    | 无法连接房主（房间已关闭或网络不稳定）                    |
+|   1    | 与房主的连接中断                                          |
+|   2    | 加入方 EasyTier 崩溃                                      |
+|   3    | 房主 EasyTier 崩溃                                        |
+|   4    | 房主端 Minecraft 服务器失联（房主退出存档，房间自动关闭） |
+|   5    | 脚手架协议错误（请向开发者反馈）                          |
 
 进入异常状态后需调用 `GET /state/ide` 才能回到待机。
 
@@ -138,12 +138,12 @@ Terracotta 内嵌了一个 HTTP 服务，同时托管 Web 控制界面与控制 
 
 `host-ok` 与 `guest-ok` 响应中的成员对象结构：
 
-| 字段 | 说明 |
-| --- | --- |
-| `machine_id` | 设备唯一标识，可用于区分玩家 |
-| `name` | 玩家显示名，未提供时房主为 `Terracotta Anonymous Host`、加入方为 `Terracotta Anonymous Guest` |
-| `vendor` | 来源标识 |
-| `kind` | `HOST`（房主）/ `LOCAL`（本机玩家）/ `GUEST`（其他加入者） |
+| 字段         | 说明                                                                                          |
+| ------------ | --------------------------------------------------------------------------------------------- |
+| `machine_id` | 设备唯一标识，可用于区分玩家                                                                  |
+| `name`       | 玩家显示名，未提供时房主为 `Terracotta Anonymous Host`、加入方为 `Terracotta Anonymous Guest` |
+| `vendor`     | 来源标识                                                                                      |
+| `kind`       | `HOST`（房主）/ `LOCAL`（本机玩家）/ `GUEST`（其他加入者）                                    |
 
 ### 控制接口
 
@@ -159,11 +159,11 @@ Terracotta 内嵌了一个 HTTP 服务，同时托管 Web 控制界面与控制 
 GET /state/scanning?room={邀请码}&player={显示名}&public_nodes={节点}&public_nodes={节点}
 ```
 
-| 参数 | 必填 | 说明 |
-| --- | --- | --- |
-| `room` | 否 | 使用指定房间码重新开房；省略时自动生成新房间 |
-| `player` | 否 | 房主显示名 |
-| `public_nodes` | 否 | 附加的 EasyTier 公共节点，可重复传入，会与内置公共节点合并 |
+| 参数           | 必填 | 说明                                                       |
+| -------------- | ---- | ---------------------------------------------------------- |
+| `room`         | 否   | 使用指定房间码重新开房；省略时自动生成新房间               |
+| `player`       | 否   | 房主显示名                                                 |
+| `public_nodes` | 否   | 附加的 EasyTier 公共节点，可重复传入，会与内置公共节点合并 |
 
 仅在当前处于 `waiting` 状态时生效；否则请求被静默忽略，仍返回 `200`。
 
@@ -175,11 +175,11 @@ GET /state/scanning?room={邀请码}&player={显示名}&public_nodes={节点}&pu
 GET /state/guesting?room={邀请码}&player={显示名}&public_nodes={节点}
 ```
 
-| 参数 | 必填 | 说明 |
-| --- | :-: | --- |
-| `room` | 是 | 房间邀请码 |
-| `player` | 否 | 加入方显示名 |
-| `public_nodes` | 否 | 同上 |
+| 参数           | 必填 | 说明         |
+| -------------- | :--: | ------------ |
+| `room`         |  是  | 房间邀请码   |
+| `player`       |  否  | 加入方显示名 |
+| `public_nodes` |  否  | 同上         |
 
 - 邀请码有效且当前处于 `waiting` 状态：返回 `200`；
 - 邀请码格式错误或当前不在 `waiting` 状态：返回 `400 Bad Request`。
@@ -188,11 +188,11 @@ GET /state/guesting?room={邀请码}&player={显示名}&public_nodes={节点}
 
 ### 运维接口
 
-| 接口 | 说明 |
-| --- | --- |
-| `GET /log?fetch=true` | 返回 `application.log` 日志文件内容。macOS 上不带 `fetch` 参数时会改为在访达中打开日志目录并返回 `204`。 |
-| `GET /panic?peaceful=true` | 优雅退出 Terracotta 进程。不带参数将直接触发 panic，仅供调试。 |
-| `GET /` | Web 控制界面主页。 |
+| 接口                       | 说明                                                                                                     |
+| -------------------------- | -------------------------------------------------------------------------------------------------------- |
+| `GET /log?fetch=true`      | 返回 `application.log` 日志文件内容。macOS 上不带 `fetch` 参数时会改为在访达中打开日志目录并返回 `204`。 |
+| `GET /panic?peaceful=true` | 优雅退出 Terracotta 进程。不带参数将直接触发 panic，仅供调试。                                           |
+| `GET /`                    | Web 控制界面主页。                                                                                       |
 
 ## 房间邀请码格式
 
