@@ -1,7 +1,10 @@
-use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr, UdpSocket};
+use std::net::{Ipv4Addr, SocketAddr, UdpSocket};
 use std::sync::mpsc::{self, Receiver, Sender};
+use std::thread;
 use std::time::Duration;
-use std::{io, thread};
+
+/// 加入者广播的 MOTD 前缀；世界发现用它排除自己重播的大厅。
+pub const LOBBY_MOTD_PREFIX: &str = "PCL.Proto 大厅";
 
 pub struct FakeServer {
     pub port: u16,
@@ -9,7 +12,9 @@ pub struct FakeServer {
 }
 
 impl FakeServer {
-    pub fn create(port: u16, motd: &'static str) -> FakeServer {
+    /// `motd` 形如 `PCL.Proto 大厅 - {房主名}`，拿不到房主名时退化为
+    /// `PCL.Proto 大厅`。
+    pub fn create(port: u16, motd: String) -> FakeServer {
         let (tx, rx) = mpsc::channel::<()>();
         thread::spawn(move || run(port, motd, rx));
 
@@ -17,45 +22,56 @@ impl FakeServer {
     }
 }
 
-fn run(port: u16, motd: &'static str, signal: Receiver<()>) {
-    lazy_static::lazy_static! {
-        static ref ADDR_V4: SocketAddr = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(224, 0, 2, 60)), 4445);
-        static ref ADDR_V6: SocketAddr = SocketAddr::new(IpAddr::V6(Ipv6Addr::new(0xFF75, 0x230, 0, 0, 0, 0, 0, 0x60)), 4445);
-    }
+/// 判断一条局域网广播 MOTD 是否来自联机大厅（自身加入者的回放）。
+///
+/// 世界扫描必须排除这些广播，否则加入者会把自己重播的假服务器
+/// 当成一个可联机的世界。
+pub fn is_lobby_motd(motd: &str) -> bool {
+    let motd = motd.trim();
+    motd.starts_with(LOBBY_MOTD_PREFIX) || motd == crate::MOTD
+}
 
-    let sockets: Vec<(UdpSocket, &'static SocketAddr)> = crate::ADDRESSES
-        .iter()
-        .map(|address| -> io::Result<(UdpSocket, &'static SocketAddr)> {
-            let socket = UdpSocket::bind((*address, 0))?;
-            let ip: &SocketAddr = match address {
-                IpAddr::V4(_) => {
-                    socket.set_broadcast(true)?;
-                    socket.set_multicast_ttl_v4(4)?;
-                    socket.set_multicast_loop_v4(true)?;
-                    &ADDR_V4
-                }
-                IpAddr::V6(_) => {
-                    socket.set_multicast_loop_v6(true)?;
-                    &ADDR_V6
-                }
-            };
+fn run(port: u16, motd: String, signal: Receiver<()>) {
+    let (socket, target) = match broadcast_socket() {
+        Ok(pair) => pair,
+        Err(error) => {
+            logging!("FakeServer", "Cannot bind loopback socket: {:?}", error);
+            return;
+        }
+    };
 
-            Ok((socket, ip))
-        })
-        .filter_map(|r| r.ok())
-        .collect();
-
-    let message: String = format!("[MOTD]{}[/MOTD][AD]{}[/AD]", motd, port);
+    let message = format!("[MOTD]{}[/MOTD][AD]{}[/AD]", motd, port);
 
     loop {
         if let Err(mpsc::TryRecvError::Disconnected) = signal.try_recv() {
             return;
         }
 
-        for (socket, address) in sockets.iter() {
-            let _ = socket.send_to(message.as_bytes(), address);
+        if let Err(error) = socket.send_to(message.as_bytes(), target) {
+            logging!("FakeServer", "Cannot broadcast lobby: {:?}", error);
         }
 
         thread::sleep(Duration::from_millis(1500));
+    }
+}
+
+fn broadcast_socket() -> std::io::Result<(UdpSocket, SocketAddr)> {
+    #[cfg(target_os = "windows")]
+    {
+        Ok((
+            UdpSocket::bind((Ipv4Addr::LOCALHOST, 0))?,
+            SocketAddr::from((Ipv4Addr::LOCALHOST, 4445)),
+        ))
+    }
+    #[cfg(not(target_os = "windows"))]
+    {
+        // Unix delivers unicast to only one of the sockets sharing Minecraft's port.
+        let socket = UdpSocket::bind((Ipv4Addr::UNSPECIFIED, 0))?;
+        socket.set_multicast_loop_v4(true)?;
+        socket.set_multicast_ttl_v4(0)?;
+        Ok((
+            socket,
+            SocketAddr::from((Ipv4Addr::new(224, 0, 2, 60), 4445)),
+        ))
     }
 }

@@ -40,7 +40,8 @@ easytier = { git = "https://github.com/EasyTier/EasyTier.git", tag = "v2.6.4"}
 # These libraries are the necessities to interact with EasyTier. DO NOT upgrade their version.
 uuid = "1"
 toml = "0"
-tokio = "1"
+# NAT 测试需要自建 current-thread runtime 驱动 EasyTier 的 STUN 采集任务。
+tokio = { version = "1", features = ["rt", "time"] }
 cidr = { version = "0", features = ["serde"] }
 
 [target.'cfg(target_os = "macos")'.dependencies]

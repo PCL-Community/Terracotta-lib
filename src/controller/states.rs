@@ -40,6 +40,8 @@ pub enum AppState {
         server: FakeServer,
 
         profiles: Vec<Profile>,
+        /// 最近一次 c:player_ping 往返毫秒；下一次心跳更新。
+        latency: Option<u64>,
     },
     Exception {
         kind: ExceptionType,
@@ -119,10 +121,11 @@ pub struct AppStateContainer {
 }
 
 pub struct AppStateCapture {
-    index: u32,
+    generation: u64,
 }
 
 struct Holder {
+    generation: u64,
     index: u32,
     sharing: u32,
     value: AppState,
@@ -132,6 +135,7 @@ impl AppState {
     #[track_caller]
     pub fn acquire() -> AppStateContainer {
         static GLOBAL_STATE: Mutex<Holder> = Mutex::new(Holder {
+            generation: 0,
             index: 0,
             sharing: 0,
             value: AppState::Waiting,
@@ -180,18 +184,19 @@ impl AppStateContainer {
     }
 
     pub fn increase(mut self) -> AppStateCapture {
-        self.state.index += 1;
+        self.state.generation = self.state.generation.wrapping_add(1);
+        self.state.index = self.state.index.wrapping_add(1);
         self.state.sharing = 0;
 
         logging!("State", "Switch to {:?}", &self.state.value);
         AppStateCapture {
-            index: self.state.index,
+            generation: self.state.generation,
         }
     }
 
     pub fn increase_shared(mut self) {
-        self.state.index += 1;
-        self.state.sharing += 1;
+        self.state.index = self.state.index.wrapping_add(1);
+        self.state.sharing = self.state.sharing.wrapping_add(1);
 
         logging!("State", "Switch (Shared) to {:?}", &self.state.value);
     }
@@ -203,13 +208,12 @@ impl Drop for AppStateContainer {
             && let Ok(d) = SystemTime::now().duration_since(time)
             && d >= Duration::from_millis(150)
         {
-            cfg_if::cfg_if! {
-                if #[cfg(debug_assertions)] {
-                    panic!("AppState has been locked for {}ms, at {}.", d.as_millis(), location);
-                } else {
-                    logging!("State", "AppState has been locked for {}ms, at {}.", d.as_millis(), location);
-                }
-            }
+            logging!(
+                "State",
+                "AppState has been locked for {}ms, at {}.",
+                d.as_millis(),
+                location
+            );
         }
     }
 }
@@ -219,7 +223,7 @@ impl AppStateCapture {
     pub fn try_capture(&self) -> Option<AppStateContainer> {
         let container = AppState::acquire();
         let state = &container.state;
-        if state.index - state.sharing <= self.index {
+        if state.generation == self.generation {
             Some(container)
         } else {
             None

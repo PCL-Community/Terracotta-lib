@@ -8,21 +8,28 @@ pub type HandleFunction = fn(&[u8], Vec<u8>) -> io::Result<PacketResponse>;
 pub type Handlers = &'static [(&'static str, &'static str, HandleFunction)];
 
 pub fn start(handlers: Handlers, port: u16) -> io::Result<u16> {
-    let socket = Socket::new(Domain::IPV4, Type::STREAM, None).unwrap();
+    let socket = Socket::new(Domain::IPV4, Type::STREAM, None)?;
     socket.bind(&SockAddr::from(SocketAddrV4::new(
         Ipv4Addr::UNSPECIFIED,
         port,
     )))?;
-    socket.set_read_timeout(Some(TIMEOUT)).unwrap();
-    socket.set_write_timeout(Some(TIMEOUT)).unwrap();
     socket.listen(128)?;
 
-    let port = socket.local_addr().unwrap().as_socket().unwrap().port();
+    let port = socket
+        .local_addr()?
+        .as_socket()
+        .ok_or_else(|| io::Error::other("Invalid listener address"))?
+        .port();
 
     thread::spawn(move || {
         let listener: TcpListener = socket.into();
         for mut stream in listener.incoming().flatten() {
             thread::spawn(move || {
+                if stream.set_read_timeout(Some(TIMEOUT)).is_err()
+                    || stream.set_write_timeout(Some(TIMEOUT)).is_err()
+                {
+                    return;
+                }
                 loop {
                     if let Err(e) = handle_connection(&mut stream, handlers) {
                         logging!("ScaffoldingServer", "Connection closed: {:?}", e);
@@ -56,6 +63,12 @@ fn handle_connection(stream: &mut TcpStream, handlers: Handlers) -> io::Result<(
     let mut body_size = [0u8; 4];
     stream.read_exact(&mut body_size)?;
     let body_size = u32::from_be_bytes(body_size) as usize;
+    if body_size > 65536 {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidData,
+            "Request too large",
+        ));
+    }
 
     let mut body = vec![0u8; body_size];
     stream.read_exact(&mut body)?;

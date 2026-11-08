@@ -7,13 +7,33 @@ use easytier::proto::api::config::{
 use easytier::proto::api::instance::{ListRouteRequest, ShowNodeInfoRequest};
 use easytier::proto::common::{NatType, PortForwardConfigPb};
 use easytier::proto::rpc_types::controller::BaseController;
+use std::future::Future;
 use std::iter::once;
 use std::net::Ipv4Addr;
 use std::str::FromStr;
 #[cfg(target_os = "android")]
 use std::sync::{Arc, RwLock};
 use std::thread;
-use std::time::Duration;
+use std::time::{Duration, Instant};
+
+const RPC_TIMEOUT: Duration = Duration::from_secs(5);
+const DEBUG_INTERVAL: Duration = Duration::from_secs(30);
+
+async fn rpc_result<T, E: std::fmt::Display>(
+    request: impl Future<Output = Result<T, E>>,
+) -> Option<T> {
+    match tokio::time::timeout(RPC_TIMEOUT, request).await {
+        Ok(Ok(value)) => Some(value),
+        Ok(Err(error)) => {
+            logging!("EasyTier", "RPC failed: {}", error);
+            None
+        }
+        Err(_) => {
+            logging!("EasyTier", "RPC timed out.");
+            None
+        }
+    }
+}
 
 #[cfg(target_os = "android")]
 pub struct EasyTierTunRequest {
@@ -60,59 +80,74 @@ pub fn create_with_config(config: TomlConfigLoader) -> EasyTier {
         return EasyTier(None);
     };
 
-    runtime.spawn(async move {
-        let mut p_address = None;
-        let mut p_proxy_cidrs = vec![];
+    let debug_output = crate::easytier::get_link_options().enable_cli_output;
+    if debug_output || cfg!(target_os = "android") {
+        runtime.spawn(async move {
+            #[cfg(target_os = "android")]
+            let mut p_address = None;
+            #[cfg(target_os = "android")]
+            let mut p_proxy_cidrs = vec![];
+            let mut last_output = Instant::now() - DEBUG_INTERVAL;
 
-        loop {
-            let address = service
-                .get_peer_manage_service()
-                .show_node_info(BaseController::default(), ShowNodeInfoRequest::default())
+            loop {
+                let Some(node) = rpc_result(
+                    service
+                        .get_peer_manage_service()
+                        .show_node_info(BaseController::default(), ShowNodeInfoRequest::default()),
+                )
                 .await
-                .ok()
-                .and_then(|my_info| my_info.node_info)
-                .unwrap()
-                .ipv4_addr
-                .parse::<cidr::Ipv4Inet>()
-                .ok()
-                .map(|address| (address.address(), address.network_length()));
-
-            let proxy_cidrs = service
-                .get_peer_manage_service()
-                .list_route(BaseController::default(), ListRouteRequest::default())
+                .and_then(|my_info| my_info.node_info) else {
+                    return;
+                };
+                let Some(routes) = rpc_result(
+                    service
+                        .get_peer_manage_service()
+                        .list_route(BaseController::default(), ListRouteRequest::default()),
+                )
                 .await
-                .ok()
-                .unwrap()
-                .routes
-                .into_iter()
-                .flat_map(|route| route.proxy_cidrs)
-                .collect::<Vec<_>>();
-
-            if (p_address != address || p_proxy_cidrs != proxy_cidrs)
-                && let Some((_address, _network_length)) = address
-            {
-                #[cfg(target_os = "android")]
-                crate::on_vpnservice_change(EasyTierTunRequest {
-                    address: _address,
-                    network_length: _network_length,
-                    cidrs: proxy_cidrs.clone(),
-                    dest: _tun_fd.clone(),
-                });
-                #[cfg(not(target_os = "android"))]
-                {
-                    // 在非 Android 平台上，不需要处理 VPN 服务变更
-                    logging!(
-                        "EasyTier",
-                        "VPN service change not handled on non-Android platform"
-                    );
+                else {
+                    return;
+                };
+                if debug_output && last_output.elapsed() >= DEBUG_INTERVAL {
+                    logging!("EasyTier", "Node: {:?}; Routes: {:?}", node, routes.routes);
+                    last_output = Instant::now();
                 }
-            }
 
-            p_address = address;
-            p_proxy_cidrs = proxy_cidrs;
-            tokio::time::sleep(Duration::from_millis(100)).await;
-        }
-    });
+                #[cfg(target_os = "android")]
+                {
+                    let address = node
+                        .ipv4_addr
+                        .parse::<cidr::Ipv4Inet>()
+                        .ok()
+                        .map(|address| (address.address(), address.network_length()));
+
+                    let proxy_cidrs = routes
+                        .routes
+                        .into_iter()
+                        .flat_map(|route| route.proxy_cidrs)
+                        .collect::<Vec<_>>();
+
+                    if (p_address != address || p_proxy_cidrs != proxy_cidrs)
+                        && let Some((_address, _network_length)) = address
+                    {
+                        crate::on_vpnservice_change(EasyTierTunRequest {
+                            address: _address,
+                            network_length: _network_length,
+                            cidrs: proxy_cidrs.clone(),
+                            dest: _tun_fd.clone(),
+                        });
+                    }
+
+                    p_address = address;
+                    p_proxy_cidrs = proxy_cidrs;
+                }
+                #[cfg(target_os = "android")]
+                tokio::time::sleep(Duration::from_millis(100)).await;
+                #[cfg(not(target_os = "android"))]
+                tokio::time::sleep(DEBUG_INTERVAL).await;
+            }
+        });
+    }
 
     EasyTier(Some(EasyTierHolder { instance, runtime }))
 }
@@ -133,24 +168,23 @@ impl EasyTier {
                  }| {
                     instance.get_api_service().and_then(|service| {
                         let service = service.get_peer_manage_service();
-                        let first =
-                            runtime
-                                .block_on(service.list_route(
-                                    BaseController::default(),
-                                    ListRouteRequest::default(),
-                                ))
-                                .ok()
-                                .map(|response| response.routes);
+                        runtime.block_on(async {
+                            let first = rpc_result(service.list_route(
+                                BaseController::default(),
+                                ListRouteRequest::default(),
+                            ))
+                            .await?
+                            .routes;
 
-                        let second = runtime
-                            .block_on(service.show_node_info(
+                            let second = rpc_result(service.show_node_info(
                                 BaseController::default(),
                                 ShowNodeInfoRequest::default(),
                             ))
-                            .ok()
-                            .and_then(|info| info.node_info);
+                            .await?
+                            .node_info?;
 
-                        first.zip(second)
+                            Some((first, second))
+                        })
                     })
                 },
             )
@@ -208,7 +242,9 @@ impl EasyTier {
             instance, runtime, ..
         }) = self.0.as_ref()
         {
-            let service = instance.get_api_service().unwrap();
+            let Some(service) = instance.get_api_service() else {
+                return false;
+            };
             let task = service.get_config_service().patch_config(
                 BaseController::default(),
                 PatchConfigRequest {
@@ -230,13 +266,7 @@ impl EasyTier {
                 },
             );
 
-            return match runtime.block_on(task) {
-                Ok(_) => true,
-                Err(e) => {
-                    logging!("EasyTier", "Cannot adding port-forward rules: {:?}", e);
-                    false
-                }
-            };
+            return runtime.block_on(rpc_result(task)).is_some();
         }
         false
     }

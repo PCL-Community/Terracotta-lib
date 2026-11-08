@@ -1,9 +1,9 @@
 use crate::scaffolding::{PacketResponse, TIMEOUT};
 use socket2::{Domain, SockAddr, Socket, Type};
 use std::io::{Read, Write};
-use std::net::{IpAddr, SocketAddr};
+use std::net::{IpAddr, Shutdown, SocketAddr};
 use std::sync::{Arc, OnceLock, mpsc};
-use std::time::Duration;
+use std::time::{Duration, Instant};
 use std::{io, thread};
 
 struct Packet {
@@ -14,6 +14,7 @@ struct Packet {
 pub struct ClientSession {
     channel: mpsc::Sender<Packet>,
     alive: Arc<OnceLock<()>>,
+    socket: Socket,
 }
 
 impl ClientSession {
@@ -30,6 +31,7 @@ impl ClientSession {
         socket.set_read_timeout(Some(TIMEOUT))?;
         socket.set_write_timeout(Some(TIMEOUT))?;
         socket.connect_timeout(&SockAddr::from(SocketAddr::new(address, port)), TIMEOUT)?;
+        let control_socket = socket.try_clone()?;
 
         let (sender, receiver) = mpsc::channel::<Packet>();
         let alive = Arc::new(OnceLock::new());
@@ -52,6 +54,12 @@ impl ClientSession {
                     )
                 };
 
+                if body_size > 65536 {
+                    return Err(io::Error::new(
+                        io::ErrorKind::InvalidData,
+                        "Response too large",
+                    ));
+                }
                 let mut data = vec![0u8; body_size];
                 socket.read_exact(&mut data)?;
 
@@ -80,6 +88,7 @@ impl ClientSession {
         Ok(ClientSession {
             channel: sender,
             alive: alive2,
+            socket: control_socket,
         })
     }
 
@@ -87,19 +96,33 @@ impl ClientSession {
         self.alive.get().is_none()
     }
 
-    pub fn send_sync<P>(&mut self, kind: (&str, &str), encoder: P) -> Option<PacketResponse>
+    pub fn send_sync<P>(
+        &mut self,
+        kind: (&str, &str),
+        encoder: P,
+        active: impl Fn() -> bool,
+    ) -> Option<PacketResponse>
     where
         P: FnOnce(&mut Vec<u8>),
     {
+        if !active() || !self.is_alive() {
+            return None;
+        }
         let (sender, receiver) = mpsc::channel();
         self.send(kind, encoder, move |response| {
             let _ = sender.send(response);
         });
+        let started = Instant::now();
 
         match loop {
+            if !active() || started.elapsed() >= TIMEOUT {
+                self.alive.get_or_init(|| ());
+                let _ = self.socket.shutdown(Shutdown::Both);
+                return None;
+            }
             match receiver.recv_timeout(Duration::from_millis(100)) {
                 Ok(response) => break response,
-                Err(mpsc::RecvTimeoutError::Disconnected) => unreachable!(),
+                Err(mpsc::RecvTimeoutError::Disconnected) => return None,
                 Err(mpsc::RecvTimeoutError::Timeout) if !self.is_alive() => {
                     logging!(
                         "ScaffoldingClient",
@@ -162,11 +185,21 @@ impl ClientSession {
             data[pos..pos + size_of::<u32>()].copy_from_slice(&(length as u32).to_be_bytes());
         }
 
-        self.channel
+        if self
+            .channel
             .send(Packet {
                 data,
                 handle: Box::new(receiver),
             })
-            .unwrap();
+            .is_err()
+        {
+            self.alive.get_or_init(|| ());
+        }
+    }
+}
+
+impl Drop for ClientSession {
+    fn drop(&mut self) {
+        let _ = self.socket.shutdown(Shutdown::Both);
     }
 }

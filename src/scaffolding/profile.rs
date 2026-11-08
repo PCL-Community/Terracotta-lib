@@ -2,7 +2,9 @@ use crate::MACHINE_ID_FILE;
 use rand_core::{OsRng, TryRngCore};
 use serde::Serialize;
 use std::fs::OpenOptions;
-use std::io::{Read, Seek, SeekFrom, Write};
+use std::io::{self, Read, Seek, SeekFrom, Write};
+use std::path::Path;
+use std::sync::RwLock;
 
 lazy_static::lazy_static! {
     pub static ref MACHINE_ID: &'static str = get_machine_id();
@@ -10,39 +12,58 @@ lazy_static::lazy_static! {
     pub static ref VENDOR: &'static str = format!("Terracotta {}, EasyTier {}", env!("TERRACOTTA_VERSION"), env!("TERRACOTTA_ET_VERSION")).leak();
 }
 
+/// 宿主可注入的 vendor 前缀（例如 “PCL.Proto 0.10.0”）。
+///
+/// 未注入时保持历史默认值；注入后最终 vendor 为 `{base}, EasyTier {ET_VERSION}`。
+/// 注入应在第一次创建/加入大厅前完成，之后的调用会覆盖此前设置。
+static VENDOR_BASE: RwLock<Option<String>> = RwLock::new(None);
+
+pub fn set_vendor(base: String) {
+    if let Ok(mut guard) = VENDOR_BASE.write() {
+        *guard = Some(base);
+    }
+}
+
+pub fn vendor() -> String {
+    match VENDOR_BASE.read().ok().and_then(|guard| guard.clone()) {
+        Some(base) => format!("{base}, EasyTier {}", env!("TERRACOTTA_ET_VERSION")),
+        None => (*VENDOR).to_string(),
+    }
+}
+
 fn get_machine_id() -> &'static str {
-    if let Ok(mut file) = OpenOptions::new()
+    let bytes = load_machine_id(&MACHINE_ID_FILE).unwrap_or_else(|error| {
+        logging!("MachineID", "Cannot persist machine id: {:?}", error);
+        let mut bytes = [0u8; 16];
+        OsRng
+            .try_fill_bytes(&mut bytes)
+            .expect("OS randomness unavailable");
+        bytes
+    });
+    hex::encode(bytes).leak()
+}
+
+fn load_machine_id(path: &Path) -> io::Result<[u8; 16]> {
+    let mut file = OpenOptions::new()
         .read(true)
         .write(true)
         .create(true)
         .truncate(false)
-        .open(MACHINE_ID_FILE.clone())
-    {
-        let mut bytes = [0u8; 17];
-        match file.read(&mut bytes) {
-            Ok(16) => {}
-            Ok(length) => {
-                logging!(
-                    "MachineID",
-                    "Cannot restore machine id: expecting 16 bytes, but {} bytes are found.",
-                    length
-                );
-                OsRng.try_fill_bytes(&mut bytes[0..16]).unwrap();
-                if file.seek(SeekFrom::Start(0)).is_ok() {
-                    let _ = file.write(&bytes[0..16]);
-                }
-            }
-            Err(e) => {
-                logging!("MachineID", "Cannot restore machine id: {:?}", e);
-            }
-        }
-
-        return hex::encode(&bytes[0..16]).leak();
+        .open(path)?;
+    let length = file.metadata()?.len();
+    let mut bytes = [0u8; 16];
+    if length >= 16 {
+        file.read_exact(&mut bytes)?;
+    } else {
+        OsRng.try_fill_bytes(&mut bytes).map_err(io::Error::other)?;
+        file.seek(SeekFrom::Start(0))?;
+        file.write_all(&bytes)?;
     }
-
-    let mut bytes = [0u8; 17];
-    OsRng.try_fill_bytes(&mut bytes).unwrap();
-    hex::encode(bytes).leak()
+    // Preserve the existing identity when repairing a file with trailing bytes.
+    if length != 16 {
+        file.set_len(16)?;
+    }
+    Ok(bytes)
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Serialize)]

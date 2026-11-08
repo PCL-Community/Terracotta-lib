@@ -10,7 +10,7 @@ use std::{
     mem::{MaybeUninit, transmute},
     net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddrV4, SocketAddrV6},
     thread,
-    time::{Duration, SystemTime},
+    time::{Duration, Instant, SystemTime},
 };
 
 use crate::{
@@ -25,7 +25,7 @@ use crate::{
     scaffolding::{
         PacketResponse,
         client::ClientSession,
-        profile::{MACHINE_ID, Profile, ProfileKind, ProfileSnapshot, VENDOR},
+        profile::{MACHINE_ID, Profile, ProfileKind, ProfileSnapshot, vendor},
     },
 };
 
@@ -177,18 +177,24 @@ impl Room {
             ConfigLoader, NetworkIdentity, PeerConfig, gen_default_flags,
         };
         use ::easytier::proto::common::CompressionAlgoPb;
+        let options = crate::easytier::get_link_options();
         let config = TomlConfigLoader::default();
         let mut flags = gen_default_flags();
         flags.no_tun = true;
         flags.data_compress_algo = CompressionAlgoPb::Zstd.into();
         flags.multi_thread = true;
-        flags.latency_first = true;
+        flags.latency_first = options.latency_first;
+        flags.enable_ipv6 = options.enable_ipv6;
+        flags.disable_sym_hole_punching = !options.try_punch_sym;
+        flags.default_protocol = options.protocol.as_str().to_string();
         flags.enable_kcp_proxy = true;
+        flags.enable_quic_proxy = true;
+        // p2p_only also disables latency_first and blocks relayed proxy traffic.
+        flags.private_mode = true;
         config.set_listeners(vec![
             "tcp://0.0.0.0:0".parse().unwrap(),
             "udp://0.0.0.0:0".parse().unwrap(),
         ]);
-        flags.p2p_only = true;
         config.set_network_identity(NetworkIdentity::new(
             self.network_name.clone(),
             self.network_secret.clone(),
@@ -205,6 +211,13 @@ impl Room {
         );
         config.set_port_forwards(Vec::new());
         config.set_flags(flags);
+        if options.enable_cli_output {
+            logging!(
+                "EasyTier",
+                "Link flags: {}",
+                serde_json::to_string(&config.get_flags()).unwrap_or_default()
+            );
+        }
         config
     }
 
@@ -242,7 +255,17 @@ impl Room {
         capture: AppStateCapture,
         public_servers: &[String],
     ) {
-        let scaffolding_port = *SCAFFOLDING_PORT;
+        if !capture.can_capture() {
+            return;
+        }
+        let Some(scaffolding_port) = *SCAFFOLDING_PORT else {
+            if let Some(state) = capture.try_capture() {
+                state.set(AppState::Exception {
+                    kind: ExceptionType::HostEasytierCrash,
+                });
+            }
+            return;
+        };
         let config = self.compute_arguments_host(port, public_servers, scaffolding_port);
 
         let easytier = crate::easytier::create_with_config(config);
@@ -259,7 +282,7 @@ impl Room {
                     ProfileSnapshot {
                         machine_id: MACHINE_ID.to_string(),
                         name: player.unwrap_or("Terracotta Anonymous Host".to_string()),
-                        vendor: VENDOR.to_string(),
+                        vendor: vendor(),
                         kind: ProfileKind::HOST,
                     }
                     .into_profile(),
@@ -271,6 +294,9 @@ impl Room {
             let mut counter = 0;
             loop {
                 thread::sleep(Duration::from_secs(5));
+                if !capture.can_capture() {
+                    return;
+                }
 
                 if check_mc_conn(port) {
                     counter = 0;
@@ -335,6 +361,9 @@ impl Room {
         capture: AppStateCapture,
         public_servers: &[String],
     ) {
+        if !capture.can_capture() {
+            return;
+        }
         let config = self.compute_arguments_guest(public_servers);
         let easytier = crate::easytier::create_with_config(config);
         let capture = {
@@ -466,6 +495,9 @@ impl Room {
         let mut session = 'session: {
             for _ in 0..60 {
                 thread::sleep(Duration::from_secs(4));
+                if !capture.can_capture() {
+                    return;
+                }
 
                 const FINGERPRINT: [u8; 16] = [
                     0x41, 0x57, 0x48, 0x44, 0x86, 0x37, 0x40, 0x59, 0x57, 0x44, 0x92, 0x43, 0x96,
@@ -473,9 +505,13 @@ impl Room {
                 ];
                 if let Ok(mut session) =
                     ClientSession::open(IpAddr::V4(Ipv4Addr::LOCALHOST), scaffolding_port)
-                    && let Some(response) = session.send_sync(("c", "ping"), |body| {
-                        body.extend_from_slice(&FINGERPRINT);
-                    })
+                    && let Some(response) = session.send_sync(
+                        ("c", "ping"),
+                        |body| {
+                            body.extend_from_slice(&FINGERPRINT);
+                        },
+                        || capture.can_capture(),
+                    )
                 {
                     let PacketResponse::Ok { data } = response else {
                         unreachable!();
@@ -506,7 +542,9 @@ impl Room {
             return;
         };
 
-        let Some(response) = session.send_sync(("c", "server_port"), |_| {}) else {
+        let Some(response) =
+            session.send_sync(("c", "server_port"), |_| {}, || capture.can_capture())
+        else {
             fail(capture);
             return;
         };
@@ -587,10 +625,42 @@ impl Room {
         }
         logging!("RoomExperiment", "MC connection is OK.");
 
+        // 对齐 PCL2-CE：加入者的本机广播用「PCL.Proto 大厅 - {房主名}」作为 MOTD。
+        // 房主名只在 c:player_profiles_list 的 HOST 项里；拿不到则退化为不带名字。
+        let host_name = session
+            .send_sync(
+                ("c", "player_profiles_list"),
+                |_| {},
+                || capture.can_capture(),
+            )
+            .and_then(|response| {
+                let PacketResponse::Ok { data } = response else {
+                    return None;
+                };
+                let value = serde_json::from_slice::<serde_json::Value>(&data).ok()?;
+                value.as_array()?.iter().find_map(|item| {
+                    let item = item.as_object()?;
+                    if item.get("kind")?.as_str()? == "HOST" {
+                        item.get("name")?.as_str().map(str::to_string)
+                    } else {
+                        None
+                    }
+                })
+            })
+            .filter(|name| !name.is_empty());
+        if !session.is_alive() {
+            fail(capture);
+            return;
+        }
+        let motd = host_name
+            .map(|name| format!("PCL.Proto 大厅 - {name}"))
+            .unwrap_or_else(|| "PCL.Proto 大厅".to_string());
+        logging!("RoomExperiment", "Lobby MOTD is: {}", motd);
+
         let local_profile = ProfileSnapshot {
             machine_id: MACHINE_ID.to_string(),
             name: player.unwrap_or("Terracotta Anonymous Guest".to_string()),
-            vendor: VENDOR.to_string(),
+            vendor: vendor(),
             kind: ProfileKind::LOCAL,
         }
         .into_profile();
@@ -607,8 +677,9 @@ impl Room {
                 AppState::GuestOk {
                     room,
                     easytier,
-                    server: FakeServer::create(local_port, crate::MOTD),
+                    server: FakeServer::create(local_port, motd),
                     profiles: vec![local_profile.clone()],
+                    latency: None,
                 }
             })
         };
@@ -616,26 +687,35 @@ impl Room {
         thread::spawn(move || {
             loop {
                 thread::sleep(Duration::from_secs(5));
+                if !capture.can_capture() {
+                    return;
+                }
 
+                let ping_started = Instant::now();
                 {
-                    let Some(_) = session.send_sync(("c", "player_ping"), |body| {
-                        serde_json::to_writer(
-                            body,
-                            &json!({
-                                "machine_id": local_profile.get_machine_id(),
-                                "name": local_profile.get_name(),
-                                "vendor": local_profile.get_vendor()
-                            }),
-                        )
-                        .unwrap();
-                    }) else {
+                    let Some(_) = session.send_sync(
+                        ("c", "player_ping"),
+                        |body| {
+                            serde_json::to_writer(
+                                body,
+                                &json!({
+                                    "machine_id": local_profile.get_machine_id(),
+                                    "name": local_profile.get_name(),
+                                    "vendor": local_profile.get_vendor()
+                                }),
+                            )
+                            .unwrap();
+                        },
+                        || capture.can_capture(),
+                    ) else {
                         fail(capture);
                         return;
                     };
                 }
+                let latency = u64::try_from(ping_started.elapsed().as_millis()).unwrap_or(u64::MAX);
 
                 {
-                    let Some(server_profiles) = session.send_sync(("c", "player_profiles_list"), |_| {}).map(|response| {
+                    let Some(server_profiles) = session.send_sync(("c", "player_profiles_list"), |_| {}, || capture.can_capture()).map(|response| {
                     let PacketResponse::Ok { data } = response else {
                         unreachable!();
                     };
@@ -701,7 +781,10 @@ impl Room {
                         return;
                     };
                     let AppState::GuestOk {
-                        easytier, profiles, ..
+                        easytier,
+                        profiles,
+                        latency: current_latency,
+                        ..
                     } = state.as_mut_ref()
                     else {
                         unreachable!();
@@ -715,6 +798,10 @@ impl Room {
 
                     let mut used = vec![false; server_profiles.len()];
                     let mut changed = false;
+                    if *current_latency != Some(latency) {
+                        *current_latency = Some(latency);
+                        changed = true;
+                    }
                     for i in (0..profiles.len()).rev() {
                         let profile = &mut profiles[i];
                         match profile.get_kind() {
@@ -825,5 +912,11 @@ mod tests {
                 .network_secret_digest
                 .is_some()
         );
+        assert!(!config1.get_flags().p2p_only);
+        assert!(config1.get_flags().latency_first);
+        let host = room.compute_arguments_host(25565, &[], 13448);
+        assert!(!host.get_flags().p2p_only);
+        assert_eq!(host.get_tcp_whitelist(), vec!["13448", "25565"]);
+        assert_eq!(host.get_udp_whitelist(), vec!["25565"]);
     }
 }

@@ -74,6 +74,9 @@ mod once_cell;
 mod ports;
 pub mod rooms;
 
+pub use easytier::{LinkOptions, ProtocolPreference};
+pub use mc::fakeserver::is_lobby_motd;
+
 lazy_static::lazy_static! {
     static ref ADDRESSES: Vec<IpAddr> = {
         let mut addresses: Vec<IpAddr> = vec![];

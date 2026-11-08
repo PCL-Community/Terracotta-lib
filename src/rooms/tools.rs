@@ -7,16 +7,21 @@ use std::time::{Duration, SystemTime};
 pub fn check_mc_conn(port: u16) -> bool {
     let start = SystemTime::now();
 
-    let socket = Socket::new(Domain::IPV4, Type::STREAM, None).unwrap();
-    socket
-        .set_read_timeout(Some(Duration::from_secs(64)))
-        .unwrap();
-    socket
-        .set_write_timeout(Some(Duration::from_secs(64)))
-        .unwrap();
+    let Ok(socket) = Socket::new(Domain::IPV4, Type::STREAM, None) else {
+        return false;
+    };
+    if socket
+        .set_read_timeout(Some(Duration::from_secs(5)))
+        .is_err()
+        || socket
+            .set_write_timeout(Some(Duration::from_secs(5)))
+            .is_err()
+    {
+        return false;
+    }
     if let Ok(_) = socket.connect_timeout(
         &SockAddr::from(SocketAddrV4::new(Ipv4Addr::new(127, 0, 0, 1), port)),
-        Duration::from_secs(64),
+        Duration::from_secs(5),
     ) && let Ok(_) = socket.send(&[0xFE])
     {
         let mut buf: [MaybeUninit<u8>; _] = [MaybeUninit::uninit(); 1];

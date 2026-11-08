@@ -32,8 +32,14 @@ fn main() {
 
     let desc = get_var("TARGET").unwrap().replace('-', "_").to_uppercase();
 
-    let version =
-        get_var("TERRACOTTA_VERSION").unwrap_or_else(|_| "ver. PCL.Proto 0.8.0".to_string());
+    // 宿主可传入 TERRACOTTA_VERSION（如 CI 注入的启动器版本）；
+    // 缺省时使用本子模块包版本，避免出现写死的过期版本串。
+    let version = get_var("TERRACOTTA_VERSION").unwrap_or_else(|_| {
+        format!(
+            "ver. PCL.Proto {}",
+            get_var("CARGO_PKG_VERSION").unwrap_or_else(|_| "unknown".to_string())
+        )
+    });
     println!("cargo::rustc-env=TERRACOTTA_VERSION={}", version);
 
     let target_family = get_var("CARGO_CFG_TARGET_FAMILY").unwrap().to_string();
