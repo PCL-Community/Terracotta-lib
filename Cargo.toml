@@ -1,6 +1,6 @@
 [package]
 name = "terracotta"
-version = "2.5.0-pcl.proto"
+version = "2.6.0-pcl.proto"
 edition = "2024"
 build = "build.rs"
 

@@ -11,7 +11,7 @@ use linkage_impl as inner;
 
 #[cfg(target_os = "android")]
 pub use inner::EasyTierTunRequest;
-use std::sync::{LazyLock, RwLock};
+use std::sync::{Arc, LazyLock, RwLock};
 use tokio::runtime::Runtime;
 
 /// 传输协议偏好，映射 EasyTier 的 `default_protocol`。
@@ -82,9 +82,17 @@ pub enum ConnectionDifficulty {
     Tough,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ConnectionType {
+    P2p,
+    Relay,
+}
+
 struct EasyTierHolder {
     instance: NetworkInstance,
     runtime: Runtime,
+    connection_type: Arc<RwLock<Option<ConnectionType>>>,
 }
 
 pub struct PortForward {

@@ -91,6 +91,7 @@ pub fn get_state() -> Value {
             server,
             profiles,
             latency,
+            connection_type,
             ..
         } => {
             let url = if server.port == 25565 {
@@ -99,7 +100,7 @@ pub fn get_state() -> Value {
                 format!("127.0.0.1:{}", server.port)
             };
 
-            json!({"state": "guest-ok", "index": index, "room": room.code, "url": url, "latency": latency, "profile_index": sharing_index, "profiles": profiles})
+            json!({"state": "guest-ok", "index": index, "room": room.code, "url": url, "latency": latency, "connection_type": connection_type, "profile_index": sharing_index, "profiles": profiles})
         }
         AppState::Exception { kind, .. } => json!({
             "state": "exception",

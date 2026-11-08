@@ -49,7 +49,7 @@ pub enum RoomKind {
 
 static CHARS: &[u8] = "0123456789ABCDEFGHJKLMNPQRSTUVWXYZ".as_bytes();
 /// scaffolding-mc 服务器主机名前缀
-static SERVER_PREFIX: &str = "scaffolding-mc-server-";
+pub(crate) static SERVER_PREFIX: &str = "scaffolding-mc-server-";
 
 fn lookup_char(char: char) -> Option<u8> {
     let char = match char {
@@ -674,12 +674,14 @@ impl Room {
                     unreachable!();
                 };
 
+                let connection_type = easytier.get_connection_type();
                 AppState::GuestOk {
                     room,
                     easytier,
                     server: FakeServer::create(local_port, motd),
                     profiles: vec![local_profile.clone()],
                     latency: None,
+                    connection_type,
                 }
             })
         };
@@ -784,6 +786,7 @@ impl Room {
                         easytier,
                         profiles,
                         latency: current_latency,
+                        connection_type: current_connection_type,
                         ..
                     } = state.as_mut_ref()
                     else {
@@ -798,6 +801,11 @@ impl Room {
 
                     let mut used = vec![false; server_profiles.len()];
                     let mut changed = false;
+                    let connection_type = easytier.get_connection_type();
+                    if *current_connection_type != connection_type {
+                        *current_connection_type = connection_type;
+                        changed = true;
+                    }
                     if *current_latency != Some(latency) {
                         *current_latency = Some(latency);
                         changed = true;

@@ -74,7 +74,7 @@ mod once_cell;
 mod ports;
 pub mod rooms;
 
-pub use easytier::{LinkOptions, ProtocolPreference};
+pub use easytier::{ConnectionType, LinkOptions, ProtocolPreference};
 pub use mc::fakeserver::is_lobby_motd;
 
 lazy_static::lazy_static! {

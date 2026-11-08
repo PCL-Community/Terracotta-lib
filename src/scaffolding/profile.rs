@@ -14,7 +14,7 @@ lazy_static::lazy_static! {
 
 /// 宿主可注入的 vendor 前缀（例如 “PCL.Proto 0.10.0”）。
 ///
-/// 未注入时保持历史默认值；注入后最终 vendor 为 `{base}, EasyTier {ET_VERSION}`。
+/// 注入后在宿主版本后保留 Terracotta 与 EasyTier 版本。
 /// 注入应在第一次创建/加入大厅前完成，之后的调用会覆盖此前设置。
 static VENDOR_BASE: RwLock<Option<String>> = RwLock::new(None);
 
@@ -26,7 +26,7 @@ pub fn set_vendor(base: String) {
 
 pub fn vendor() -> String {
     match VENDOR_BASE.read().ok().and_then(|guard| guard.clone()) {
-        Some(base) => format!("{base}, EasyTier {}", env!("TERRACOTTA_ET_VERSION")),
+        Some(base) => format!("{base}, {}", *VENDOR),
         None => (*VENDOR).to_string(),
     }
 }

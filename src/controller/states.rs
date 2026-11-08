@@ -1,4 +1,4 @@
-use crate::easytier::{ConnectionDifficulty, EasyTier};
+use crate::easytier::{ConnectionDifficulty, ConnectionType, EasyTier};
 use crate::mc::fakeserver::FakeServer;
 use crate::mc::scanning::MinecraftScanner;
 use crate::rooms::Room;
@@ -42,6 +42,7 @@ pub enum AppState {
         profiles: Vec<Profile>,
         /// 最近一次 c:player_ping 往返毫秒；下一次心跳更新。
         latency: Option<u64>,
+        connection_type: Option<ConnectionType>,
     },
     Exception {
         kind: ExceptionType,

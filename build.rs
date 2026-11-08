@@ -32,14 +32,9 @@ fn main() {
 
     let desc = get_var("TARGET").unwrap().replace('-', "_").to_uppercase();
 
-    // 宿主可传入 TERRACOTTA_VERSION（如 CI 注入的启动器版本）；
-    // 缺省时使用本子模块包版本，避免出现写死的过期版本串。
-    let version = get_var("TERRACOTTA_VERSION").unwrap_or_else(|_| {
-        format!(
-            "ver. PCL.Proto {}",
-            get_var("CARGO_PKG_VERSION").unwrap_or_else(|_| "unknown".to_string())
-        )
-    });
+    // CI 可覆盖陶瓦版本；本地构建直接使用陶瓦包版本。
+    let version =
+        get_var("TERRACOTTA_VERSION").unwrap_or_else(|_| get_var("CARGO_PKG_VERSION").unwrap());
     println!("cargo::rustc-env=TERRACOTTA_VERSION={}", version);
 
     let target_family = get_var("CARGO_CFG_TARGET_FAMILY").unwrap().to_string();

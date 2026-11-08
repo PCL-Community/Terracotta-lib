@@ -21,7 +21,7 @@ Terracotta 为游玩 Minecraft: Java Edition 的玩家提供开箱即用的联�
 
 ```toml
 [dependencies]
-terracotta = { git = "https://github.com/PCL-Community/PCL.Proto.git", version = "2.5.0-pcl.proto" }
+terracotta = { git = "https://github.com/PCL-Community/Terracotta-lib.git", version = "2.6.0-pcl.proto" }
 ```
 
 ### 初始化

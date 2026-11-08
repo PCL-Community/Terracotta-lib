@@ -1,17 +1,16 @@
-use crate::easytier::{EasyTier, EasyTierHolder, EasyTierMember, PortForward};
-use easytier::common::config::{ConfigFileControl, TomlConfigLoader};
+use crate::easytier::{ConnectionType, EasyTier, EasyTierHolder, EasyTierMember, PortForward};
+use easytier::common::config::{ConfigFileControl, ConfigLoader, TomlConfigLoader};
 use easytier::launcher::NetworkInstance;
 use easytier::proto::api::config::{
     ConfigPatchAction, InstanceConfigPatch, PatchConfigRequest, PortForwardPatch,
 };
-use easytier::proto::api::instance::{ListRouteRequest, ShowNodeInfoRequest};
+use easytier::proto::api::instance::{ListRouteRequest, Route, ShowNodeInfoRequest};
 use easytier::proto::common::{NatType, PortForwardConfigPb};
 use easytier::proto::rpc_types::controller::BaseController;
 use std::future::Future;
 use std::iter::once;
 use std::net::Ipv4Addr;
 use std::str::FromStr;
-#[cfg(target_os = "android")]
 use std::sync::{Arc, RwLock};
 use std::thread;
 use std::time::{Duration, Instant};
@@ -44,6 +43,7 @@ pub struct EasyTierTunRequest {
 }
 
 pub fn create_with_config(config: TomlConfigLoader) -> EasyTier {
+    let latency_first = config.get_flags().latency_first;
     let mut instance = NetworkInstance::new(config, ConfigFileControl::STATIC_CONFIG);
     let Ok((instance, runtime)) = instance
         .start()
@@ -79,6 +79,30 @@ pub fn create_with_config(config: TomlConfigLoader) -> EasyTier {
         }
         return EasyTier(None);
     };
+
+    let connection_type = Arc::new(RwLock::new(None));
+    let connection_status = connection_type.clone();
+    let connection_service = service.clone();
+    // 在后台采样路由，读取大厅状态时不持有状态锁等待 RPC。
+    runtime.spawn(async move {
+        loop {
+            let current = rpc_result(
+                connection_service
+                    .get_peer_manage_service()
+                    .list_route(BaseController::default(), ListRouteRequest::default()),
+            )
+            .await
+            .and_then(|routes| {
+                routes
+                    .routes
+                    .iter()
+                    .find(|route| route.hostname.starts_with(crate::rooms::SERVER_PREFIX))
+                    .and_then(|route| route_connection_type(route, latency_first))
+            });
+            *connection_status.write().unwrap() = current;
+            tokio::time::sleep(Duration::from_secs(5)).await;
+        }
+    });
 
     let debug_output = crate::easytier::get_link_options().enable_cli_output;
     if debug_output || cfg!(target_os = "android") {
@@ -149,10 +173,33 @@ pub fn create_with_config(config: TomlConfigLoader) -> EasyTier {
         });
     }
 
-    EasyTier(Some(EasyTierHolder { instance, runtime }))
+    EasyTier(Some(EasyTierHolder {
+        instance,
+        runtime,
+        connection_type,
+    }))
+}
+
+fn route_connection_type(route: &Route, latency_first: bool) -> Option<ConnectionType> {
+    let hops = if latency_first {
+        route.cost_latency_first?
+    } else {
+        route.cost
+    };
+    match hops {
+        1 => Some(ConnectionType::P2p),
+        2.. => Some(ConnectionType::Relay),
+        _ => None,
+    }
 }
 
 impl EasyTier {
+    pub fn get_connection_type(&self) -> Option<ConnectionType> {
+        self.0
+            .as_ref()
+            .and_then(|holder| *holder.connection_type.read().unwrap())
+    }
+
     pub fn is_alive(&self) -> bool {
         self.0
             .as_ref()
@@ -292,5 +339,44 @@ impl Drop for EasyTier {
             }
             runtime.shutdown_background();
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn connection_type_follows_the_active_routing_policy() {
+        for (hops, latency_hops, shortest, fastest) in [
+            (
+                1,
+                Some(2),
+                Some(ConnectionType::P2p),
+                Some(ConnectionType::Relay),
+            ),
+            (
+                2,
+                Some(1),
+                Some(ConnectionType::Relay),
+                Some(ConnectionType::P2p),
+            ),
+            (1, None, Some(ConnectionType::P2p), None),
+            (0, Some(0), None, None),
+            (-1, Some(-1), None, None),
+        ] {
+            let route = Route {
+                cost: hops,
+                cost_latency_first: latency_hops,
+                ..Default::default()
+            };
+            assert_eq!(route_connection_type(&route, false), shortest);
+            assert_eq!(route_connection_type(&route, true), fastest);
+        }
+        assert_eq!(serde_json::to_value(ConnectionType::P2p).unwrap(), "p2p");
+        assert_eq!(
+            serde_json::to_value(ConnectionType::Relay).unwrap(),
+            "relay"
+        );
     }
 }
