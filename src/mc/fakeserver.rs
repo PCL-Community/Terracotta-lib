@@ -31,6 +31,19 @@ pub fn is_lobby_motd(motd: &str) -> bool {
     motd.starts_with(LOBBY_MOTD_PREFIX) || motd == crate::MOTD
 }
 
+/// 解析一条原版局域网广播报文：`[MOTD]<世界名>[/MOTD][AD]<端口>[/AD]`。
+///
+/// 返回原始 MOTD 文本与端口；结构不完整或端口不是合法 u16 时返回 `None`。
+/// 本文件是该格式的生产者（见 `run` 中的组包），解析规则以此为单一事实来源，
+/// 调用方在其上叠加各自的过滤（大厅排除、端口下限等）。
+pub fn parse_advertisement(data: &str) -> Option<(&str, u16)> {
+    let (_, motd) = data.split_once("[MOTD]")?;
+    let (motd, _) = motd.split_once("[/MOTD]")?;
+    let (_, rest) = data.split_once("[AD]")?;
+    let (port, _) = rest.split_once("[/AD]")?;
+    Some((motd, port.trim().parse::<u16>().ok()?))
+}
+
 fn run(port: u16, motd: String, signal: Receiver<()>) {
     let (socket, target) = match broadcast_socket() {
         Ok(pair) => pair,

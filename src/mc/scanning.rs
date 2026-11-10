@@ -15,14 +15,11 @@ pub struct MinecraftScanner {
 }
 
 fn advertised_port(data: &str, filter: fn(&str) -> bool) -> Option<u16> {
-    let (_, motd) = data.split_once("[MOTD]")?;
-    let (motd, _) = motd.split_once("[/MOTD]")?;
+    let (motd, port) = super::fakeserver::parse_advertisement(data)?;
     if motd.is_empty() || !filter(motd) {
         return None;
     }
-    let (_, port) = data.split_once("[AD]")?;
-    let (port, _) = port.split_once("[/AD]")?;
-    port.parse().ok().filter(|port| *port != 0)
+    Some(port).filter(|port| *port != 0)
 }
 
 fn update_ports(ports: &mut Vec<(u16, Instant)>, port: Option<u16>, now: Instant) -> bool {

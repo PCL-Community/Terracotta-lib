@@ -75,7 +75,7 @@ mod ports;
 pub mod rooms;
 
 pub use easytier::{ConnectionType, LinkOptions, ProtocolPreference};
-pub use mc::fakeserver::is_lobby_motd;
+pub use mc::fakeserver::{is_lobby_motd, parse_advertisement};
 
 lazy_static::lazy_static! {
     static ref ADDRESSES: Vec<IpAddr> = {
