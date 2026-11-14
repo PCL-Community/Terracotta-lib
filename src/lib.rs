@@ -120,6 +120,11 @@ pub fn init_lib(machine_id: PathBuf) {
     MACHINE_ID_FILE.set(machine_id);
 }
 
+/// Shared identity for this process; initialize the library before calling.
+pub fn machine_id() -> &'static str {
+    *scaffolding::profile::MACHINE_ID
+}
+
 // FIXME: Third-party crate 'jni-sys' leaves a dynamic link to JNI_GetCreatedJavaVMs which doesn't exist on Android.
 //        A dummy JNI_GetCreatedJavaVMs is declared as a workaround to prevent fatal errors while linking.
 #[cfg(target_os = "android")]
